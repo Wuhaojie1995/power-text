@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>海港建设工程管理数字化平台-测试AI</title>
+    <style>
+      /* ------------------------------------------------------------------
+         首屏加载蒙层：数据光柱 + 标尺
+
+         为什么写在这里而不是做成 React 组件：它要在 JS 包下载、解析、执行
+         之前就画出来，挂进 React 树就晚了 —— 那时该显示的东西早就该显示了。
+         所以这一层只负责「画」，摘掉它的逻辑在 src/lib/app-loading.ts。
+
+         为什么是「一排跳动的光柱」：前面两版（双环转圈、雷达波纹）都被否了，
+         共同毛病是**画面太空** —— 它们都是「中心对称的一个圈 + 一个点」，
+         周围的留白没有东西撑，看着像没画完。光柱是横向铺开的，
+         天然把这个宽度填满；而「数据在跳动 + 底下一把标尺」这套语言，
+         正好是这套系统本身在做的事（监测、计量、进度），不是硬凑的装饰。
+
+         字体必须自己写一遍：index.less 里的 :root 样式要等 CSS 包加载才生效，
+         不写的话这段时间会退回浏览器默认的衬线体，中文看着很怪。
+         ------------------------------------------------------------------ */
+      #app-loading {
+        /* 深浅两套色。默认浅色，深色由页面底部那段脚本给 <html> 挂上的
+           is-app-dark 接管 —— 不能只写一套，否则深色首页会先闪一下浅色。 */
+        --al-accent: #2563eb;
+        --al-line: rgba(15, 23, 42, 0.14);
+        --al-bar-base: rgba(37, 99, 235, 0);
+        --al-text: #6b7280;
+        --al-glow: rgba(37, 99, 235, 0.5);
+        --al-haze: rgba(37, 99, 235, 0.08);
+
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 30px;
+        /* 中心那团柔光有 480px，比窄屏视口还宽。这里裁掉溢出，
+           确保它不会把整页撑出一个横向滚动条 */
+        overflow: hidden;
+        /* 必须是**不透明**的整屏底色。
+           这里吃过一次亏：一开始写成 transparent 想「让 body 的底色透上来」，
+           结果 React 一挂载，页面内容就直接透出来了 —— 蒙层只剩中间那点动画浮在
+           已经渲染好的页面上，等于没遮住任何东西。
+           加载界面就该是一个干净的舞台：只有动画，没有别的。
+           浅色取首页浅色底的同一条渐变，深色见下面的 is-app-dark。 */
+        background: linear-gradient(160deg, #f8fafc 0%, #eef2ff 55%, #ffffff 100%);
+        font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC',
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+        opacity: 1;
+        transition: opacity 0.48s ease;
+      }
+
+      html.is-app-dark #app-loading {
+        --al-accent: #60a5fa;
+        --al-line: rgba(148, 163, 184, 0.2);
+        --al-bar-base: rgba(96, 165, 250, 0);
+        --al-text: #94a3b8;
+        --al-glow: rgba(96, 165, 250, 0.65);
+        --al-haze: rgba(96, 165, 250, 0.12);
+
+        /* 深色底取的是首页两条深色渐变（默认底 / 3D 底）的中间值：
+           起点 #060b1c 和终点 #040711 两边一样，中间那点差别落在 480ms 的
+           交叉淡出里看不出来。这样蒙层一淡，后面的页面几乎是无缝接上的。 */
+        background: radial-gradient(1100px 760px at 50% -6%, #0d1c40 0%, transparent 62%),
+          linear-gradient(165deg, #060b1c 0%, #081227 48%, #040711 100%);
+      }
+
+      #app-loading.is-done {
+        opacity: 0;
+        /* 淡出期间不该再接受任何点击 */
+        pointer-events: none;
+      }
+
+      /* 中心那团柔光。作用是把视线先聚到中间，也让光柱的根部和背景之间有个过渡 */
+      #app-loading::before {
+        content: '';
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 480px;
+        height: 480px;
+        border-radius: 50%;
+        background: radial-gradient(circle, var(--al-haze) 0%, transparent 62%);
+        transform: translate(-50%, -50%);
+      }
+
+      /* 仪表整体：宽度由光柱那一行撑开，下面的标尺 stretch 上去正好和它等宽 */
+      .app-loading-meter {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .app-loading-bars {
+        display: flex;
+        align-items: flex-end;
+        gap: 7px;
+        height: 52px;
+      }
+
+      .app-loading-bars span {
+        width: 4px;
+        height: 100%;
+        border-radius: 2px;
+        /* 根部透明、柱顶实色，柱子像是从标尺上「长」出来的，不是插上去的 */
+        background: linear-gradient(to top, var(--al-bar-base), var(--al-accent));
+        /* 视觉上从底部向上生长，所以缩放原点放底部 */
+        transform-origin: 50% 100%;
+        /* 负延迟（见下面的 calc）：t=0 时波形已经在流动，
+           不然 12 根会一起从最低点起步，第一秒看着像启动失败 */
+        animation: app-loading-bar 1.5s ease-in-out infinite;
+        animation-delay: calc(var(--i) * -0.11s);
+      }
+
+      /* 标尺：一条轴线 + 从轴线上垂下来的刻度。
+         柱子和标尺是这套界面语言里最「工程」的一块，也是这版画面的落点 */
+      .app-loading-axis {
+        margin-top: 13px;
+        height: 7px;
+        border-top: 1px solid var(--al-line);
+        background-image: repeating-linear-gradient(
+          to right,
+          var(--al-line) 0 1px,
+          transparent 1px 22px
+        );
+        background-size: auto 4px;
+        background-repeat: repeat-x;
+      }
+
+      .app-loading-text {
+        margin: 0;
+        font-size: 13px;
+        letter-spacing: 0.3em;
+        /* letter-spacing 会在每个字**后面**补一份间距，整行看着偏左；
+           用等量的 text-indent 推回来才是视觉居中 */
+        text-indent: 0.3em;
+        color: var(--al-text);
+      }
+
+      @keyframes app-loading-bar {
+        0%,
+        100% {
+          transform: scaleY(0.22);
+          opacity: 0.42;
+        }
+
+        50% {
+          transform: scaleY(1);
+          opacity: 1;
+        }
+      }
+
+      /* 系统开了「减少动态效果」：不取消动画，只把它放到很慢。
+         这一版的动作是小面积、低频的柱高起伏，不像扩散的波纹那样大面积推挤视野，
+         没必要整个停掉 —— 而完全静止的画面会让人以为卡死了 */
+      @media (prefers-reduced-motion: reduce) {
+        .app-loading-bars span {
+          animation-duration: 4s;
+        }
+      }
+    </style>
+    <script>
+      // 首页是深色底，但 React 要等 JS 下载解析完才挂载，
+      // 这段时间 <body> 会按默认白底渲染，出现「白屏闪一下」。
+      // 这里在首屏之前就把底色定下来，挂载后由 HomePage 组件的 useEffect 接管同一个 style 节点。
+      //
+      // 必须带 !important：src/index.less 里的 `:root` 是伪类，特异性(0,1,0)高于 `html`(0,0,1)，
+      // 而且 Vite 注入的样式表在 DOM 里排在本脚本之后，靠选择器或顺序都压不过它。
+      // 纯底色设置，不参与业务逻辑；localStorage 不可用时按浅色处理。
+      ;(function () {
+        try {
+          // 用户在首页选过浅色，就不再铺深色底
+          var prefersLight = localStorage.getItem('patrol_login_theme') === 'light'
+
+          // 深色底的页面只有一个：首页（作品集落地页）。
+          // 判断写成「以 / 结尾」而不是 path === '/'，是为了兼容配置了 VITE_BASENAME
+          // 部署到子目录的情况（那时 pathname 是 /xxx/ 而不是 /）。
+          // 旧的 /login 也一并算首页 —— 它现在只是一条重定向，但首屏那一刻还没跳过去，
+          // 不认它就会在重定向完成前闪一下白底。
+          var isHome = /\/$/.test(location.pathname) || /\/login\/?$/.test(location.pathname)
+
+          var isDark = isHome && !prefersLight
+
+          // 蒙层也要知道深浅，理由和底色一样。这个类只服务蒙层，
+          // 由 src/lib/app-loading.ts 在摘掉蒙层时一并清掉。
+          document.documentElement.classList.add(isDark ? 'is-app-dark' : 'is-app-light')
+
+          if (!isDark) return
+
+          var style = document.createElement('style')
+          style.id = 'login-theme-bg'
+          style.textContent = 'html,body{background-color:#060b1c !important}'
+          document.head.appendChild(style)
+
+          // 滚动条同理：默认那条是浅色的，晚一步挂上就会先闪一下白边。
+          // 挂载后由 HomePage 的 useEffect 接管这两个类名（样式见 home.less 末尾）。
+          document.documentElement.classList.add('home-scroll-dark')
+        } catch (e) {
+          /* 忽略：拿不到 localStorage 就按浅色走，不影响功能 */
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <!-- 首屏蒙层。排在 #root 之前，保证它先被解析出来 -->
+    <div id="app-loading" role="status">
+      <div class="app-loading-meter">
+        <div class="app-loading-bars" aria-hidden="true">
+          <span style="--i: 0"></span>
+          <span style="--i: 1"></span>
+          <span style="--i: 2"></span>
+          <span style="--i: 3"></span>
+          <span style="--i: 4"></span>
+          <span style="--i: 5"></span>
+          <span style="--i: 6"></span>
+          <span style="--i: 7"></span>
+          <span style="--i: 8"></span>
+          <span style="--i: 9"></span>
+          <span style="--i: 10"></span>
+          <span style="--i: 11"></span>
+        </div>
+        <div class="app-loading-axis" aria-hidden="true"></div>
+      </div>
+      <p class="app-loading-text">正在加载</p>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

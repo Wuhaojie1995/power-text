@@ -1,0 +1,27 @@
+// ---------------- 404 页 ----------------
+// 挂在根路由的 errorElement 上，是独立的整页结果页（不再套在 BasicLayout 内容区里），
+// 所以要用 100vh 自己撑满视口。
+// flex:1 / min-height:0 保留着：万一以后又被塞回某个 flex 列容器里，不用再改一遍。
+.not-found-page {
+  flex: 1;
+  min-height: 0;
+  // 独立成页时必须自己占满一屏，否则内容会挤在页面最顶端
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: auto;
+  background-color: #ffffff;
+}
+
+.not-found-path {
+  margin: 0;
+  font-size: 13px;
+  color: @color-text-secondary;
+
+  // 嵌套写法编译后仍是 .not-found-path code，与原 CSS 一致
+  code {
+    color: @color-primary;
+  }
+}

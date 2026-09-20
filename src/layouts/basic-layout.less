@@ -1,0 +1,132 @@
+// ---------------- 主框架：顶栏 + 侧边菜单 + 内容区 ----------------
+
+// 整页锁死一屏：滚动交给内部页面（如消息列表）自己处理
+.basic-layout {
+  height: 100vh;
+  overflow: hidden;
+  background: @color-bg;
+  color: @color-text;
+}
+
+// ---------------- 顶栏 ----------------
+// antd 的 Header 默认 line-height:64px、padding:0 50px，这里全部覆盖掉，
+// 否则内容不垂直居中、左右留白过大
+.basic-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: @layout-header-height;
+  padding: 0 20px 0 12px;
+  line-height: normal;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid @color-border;
+}
+
+.basic-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.basic-collapse-btn {
+  color: @color-text-secondary;
+}
+
+.basic-title {
+  position: relative;
+  padding-left: 12px;
+  margin: 0;
+  font-size: 17px;
+  font-family: @font-medium;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: @color-text;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  // 标题左侧的渐变竖条：低成本做出品牌感
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 4px;
+    height: 18px;
+    border-radius: 2px;
+    background: @gradient-primary;
+  }
+}
+
+.basic-header-right {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.basic-env {
+  font-size: 13px;
+  color: @color-text-secondary;
+}
+
+// 环境徽标 .env-tag 已移到 src/styles/global.less：
+// 它被 BasicLayout 和首页共用，而本文件只在 BasicLayout 挂载时才加载，
+// 放在这里会导致首页上「有 class、没样式」。
+
+// 用户区：hover 变主色，暗示可点开下拉
+.basic-user {
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 999px;
+  transition: background 0.2s ease;
+
+  &:hover {
+    background: rgba(37, 99, 235, 0.06);
+  }
+}
+
+.basic-avatar {
+  background: @gradient-primary;
+  font-family: @font-medium;
+  font-weight: 600;
+}
+
+.basic-user-name {
+  font-size: 13px;
+  color: @color-text;
+}
+
+// ---------------- 侧边栏 ----------------
+// min-height:0 是 flex 布局里让「内部滚动」生效的关键
+.basic-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.basic-sider {
+  border-right: 1px solid @color-border;
+  overflow: auto;
+}
+
+.basic-menu {
+  height: 100%;
+  border-inline-end: none !important;
+  padding-top: 8px;
+}
+
+// ---------------- 内容区 ----------------
+// 用 flex 列容器承接页面，页面自己 flex:1 撑满；
+// min-width:0 防止内容过宽时把侧边栏挤没
+.basic-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 240px);
+}

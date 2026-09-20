@@ -1,0 +1,50 @@
+:root {
+  /* 正文默认走 Light 字族。加粗的地方由各自规则换成 @font-medium ——
+     详见 styles/variables.less 里两个字体变量的说明 */
+  font-family: @font-light;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light; /* 浅色主题：滚动条/表单控件跟随亮色渲染 */
+  color: #333437; /* 全局正文字色 */
+  background-color: #ffffff; /* 全局白色背景 */
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 语义化加粗标签统一换 Medium 字族。
+   这几类标签的粗体来自浏览器默认样式，代码里根本没有 font-weight 声明，
+   只改「写了 font-weight 的地方」会漏掉它们，标题就会在 Light 面上被合成加粗 */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+strong,
+b,
+th {
+  font-family: @font-medium;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: #ffffff;
+  color: #333437;
+}
+
+code {
+  font-family: 'Fira Code', 'Consolas', monospace;
+  background: rgba(51, 52, 55, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+}

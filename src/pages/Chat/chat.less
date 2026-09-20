@@ -1,0 +1,551 @@
+// ---------------- 聊天页容器 ----------------
+// 由外层 .basic-content 用 flex 分配高度，这里 flex:1 + min-height:0，
+// 滚动只发生在 .chat-list 内部，整页不会出现第二根滚动条。
+.chat-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+// ---------------- 聊天面板 ----------------
+// flex:1 撑满剩余高度；min-height:0 是关键 —— 否则消息列表不会收缩，
+// 内容变多时会把整个页面顶高，而不是在列表内部滚动。
+.chat-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-width: 960px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 14px 24px 20px;
+  gap: 10px;
+}
+
+.chat-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chat-toolbar-left {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.chat-title {
+  font-size: 16px;
+  font-family: @font-medium;
+  font-weight: 700;
+  color: @color-text;
+}
+
+.chat-thread {
+  font-size: 12px;
+  color: @color-text-secondary;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-toolbar-right {
+  display: flex;
+  gap: 8px;
+
+  // 工具栏按钮：统一做成「浅底胶囊」——白底、细边框、圆角，
+  // 悬停时浮起 + 主色描边，比默认 antd 灰按钮更精致，也不会跟消息气泡抢视觉
+  .ant-btn {
+    height: 32px;
+    padding: 0 14px;
+    border-radius: 999px;
+    border-color: @color-border-strong;
+    background: #ffffff;
+    color: @color-text;
+    box-shadow: @shadow-sm;
+    transition: all 0.2s ease;
+
+    &:hover:not(:disabled) {
+      color: @color-primary;
+      border-color: rgba(37, 99, 235, 0.5);
+      background: rgba(37, 99, 235, 0.04);
+      transform: translateY(-1px);
+      box-shadow: @shadow-md;
+    }
+
+    &:disabled {
+      color: rgba(51, 52, 55, 0.3);
+      background: transparent;
+      box-shadow: none;
+    }
+  }
+}
+
+// 列表的定位外壳：占满 chat-panel 剩余高度，悬浮按钮锚定在它上面
+.chat-list-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; // flex 子项要能收缩，内层 overflow-y:auto 才会生效
+}
+
+.chat-list {
+  flex: 1;
+  min-height: 0; // 覆盖 flex 子项默认 min-height:auto，这是内部滚动的关键
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid @color-border;
+  border-radius: 16px;
+  background: @color-bg-soft;
+  box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.03);
+  // 注意：这里故意不设 scroll-behavior: smooth。
+  // 流式输出时每秒会触发很多次「拉到底」，平滑动画永远追不上新内容，
+  // 中间态还会被 onScroll 误判成「用户在往上翻」导致跟随失效。
+  // 需要平滑的场景（回到顶部）在 JS 里单独用 scrollTo({behavior:'smooth'})。
+
+  // 浅色滚动条：又细又低调，hover 才加深
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(51, 52, 55, 0.15);
+    border-radius: 4px;
+
+    &:hover {
+      background: rgba(51, 52, 55, 0.28);
+    }
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+// ---------------- 列表悬浮按钮 ----------------
+// 挂在 .chat-list-wrap 上，绝对定位在列表右上/右下角，
+// 不会随列表内容滚动，也不挤压消息区域
+.chat-float-btn {
+  position: absolute;
+  z-index: 10;
+  box-shadow: @shadow-md;
+}
+
+.chat-back-top {
+  top: 14px;
+  right: 18px;
+}
+
+.chat-to-bottom {
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+// ---------------- 空态 ----------------
+.chat-empty {
+  margin: auto;
+  text-align: center;
+  color: @color-text-secondary;
+  max-width: 460px;
+
+  // 空态顶部的渐变小机器人：用 emoji + 渐变圆底，比纯文字有温度
+  &::before {
+    content: '🤖';
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 72px;
+    height: 72px;
+    margin: 0 auto 16px;
+    font-size: 34px;
+    border-radius: 24px;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(79, 70, 229, 0.12));
+    box-shadow: @shadow-sm;
+  }
+}
+
+.chat-empty-title {
+  margin-bottom: 6px;
+  font-size: 15px;
+  font-family: @font-medium;
+  font-weight: 600;
+  color: @color-text;
+}
+
+.chat-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  align-items: center;
+  margin-top: 18px;
+
+  // 空态示例问题：做成「建议胶囊」，悬停上浮并亮主色，暗示「点我试试」
+  .ant-btn {
+    height: 34px;
+    padding: 0 16px;
+    border-radius: 999px;
+    border: 1px solid @color-border-strong;
+    background: #ffffff;
+    color: @color-text;
+    font-size: 13px;
+    box-shadow: @shadow-sm;
+    transition: all 0.2s ease;
+
+    &:hover {
+      color: @color-primary;
+      border-color: rgba(37, 99, 235, 0.55);
+      background: rgba(37, 99, 235, 0.04);
+      transform: translateY(-2px);
+      box-shadow: @shadow-md;
+    }
+
+    &:active {
+      transform: translateY(0);
+    }
+  }
+}
+
+// ---------------- 消息行 ----------------
+.chat-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  animation: chat-fade-in 0.25s ease-out; // 新消息轻微淡入，不突兀
+
+  // 用户消息：用 row-reverse 把「头像 + 气泡」整体镜像，实现靠右显示
+  &.user {
+    flex-direction: row-reverse;
+  }
+
+  // AI 头像用主色渐变，一眼区分「对面是 AI」
+  &.assistant .chat-avatar {
+    background: @gradient-primary;
+    color: #ffffff;
+  }
+
+  // 气泡「尖角」：让消息和头像的归属关系更明确
+  &.assistant .chat-bubble {
+    border-top-left-radius: 4px;
+  }
+
+  &.user .chat-bubble {
+    background: @gradient-primary;
+    border: none;
+    border-top-right-radius: 4px;
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.28);
+  }
+}
+
+@keyframes chat-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chat-avatar {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px; // 圆角方块比圆形更年轻化
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-family: @font-medium;
+  font-weight: 700;
+  background: rgba(51, 52, 55, 0.07);
+  color: @color-text;
+  box-shadow: @shadow-sm;
+}
+
+.chat-bubble {
+  max-width: 76%;
+  padding: 12px 16px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.75;
+  background: #ffffff;
+  border: 1px solid @color-border;
+  color: @color-text;
+  box-shadow: @shadow-sm;
+  word-break: break-word; // 长英文/长链接不撑破气泡
+  white-space: pre-wrap; // 保留 AI 输出里的换行、缩进、列表格式
+
+  &.is-error {
+    background: rgba(239, 68, 68, 0.05);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #dc2626;
+    box-shadow: none;
+  }
+}
+
+// 流式输出时挂在文字末尾的闪烁光标，提示「还在继续写」
+.chat-caret {
+  display: inline-block;
+  width: 6px;
+  height: 14px;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: @color-primary;
+  animation: chat-blink 1s steps(2, start) infinite;
+}
+
+@keyframes chat-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+// AI 还没吐出第一个字时的「思考中」：三个小圆点依次跳动
+.chat-typing {
+  display: inline-flex;
+  gap: 5px;
+  padding: 4px 2px;
+
+  i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: @color-primary;
+    opacity: 0.55;
+    animation: chat-bounce 1.2s infinite ease-in-out;
+
+    &:nth-child(2) {
+      animation-delay: 0.15s;
+    }
+
+    &:nth-child(3) {
+      animation-delay: 0.3s;
+    }
+  }
+}
+
+@keyframes chat-bounce {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  40% {
+    transform: translateY(-5px);
+    opacity: 1;
+  }
+}
+
+// 错误提示条改用 antd Alert，这里只留个外边距
+.chat-error {
+  font-size: 13px;
+  border-radius: 10px;
+}
+
+// ---------------- 输入区 ----------------
+.chat-composer {
+  display: flex;
+  align-items: flex-end; // 输入框变高时按钮贴底对齐
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid @color-border;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: @shadow-sm;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+  // 聚焦时输入卡片整体亮起主色描边（用 :focus-within 感知内部输入框聚焦）
+  &:focus-within {
+    border-color: rgba(37, 99, 235, 0.55);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  }
+
+  // 发送 / 停止按钮：统一尺寸贴底对齐，与输入卡片同高更协调
+  .ant-btn {
+    height: 38px;
+    align-self: flex-end;
+    border-radius: 12px;
+    padding: 0 18px;
+  }
+
+  // 发送按钮：主色渐变 + 蓝色投影
+  .ant-btn-primary {
+    background: @gradient-primary;
+    border: none;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.28);
+
+    &:hover:not(:disabled) {
+      filter: brightness(1.08);
+    }
+
+    // 关键：禁用态必须显式覆盖渐变，否则输入为空时
+    // 按钮是「半透明渐变深色一坨」
+    &:disabled {
+      background: rgba(51, 52, 55, 0.08) !important;
+      color: rgba(51, 52, 55, 0.32) !important;
+      box-shadow: none !important;
+      filter: none;
+    }
+  }
+
+  // 停止按钮（danger）：淡红底细描边，不跟发送按钮抢眼
+  .ant-btn-default.ant-btn-dangerous {
+    background: #ffffff;
+    border-color: rgba(220, 38, 38, 0.45);
+    color: #dc2626;
+    box-shadow: none;
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.06);
+      border-color: #dc2626;
+    }
+  }
+}
+
+// antd Input.TextArea：撑满剩余宽度（高度由 autoSize 自动计算）。
+// 去掉 antd 自带边框，让外层卡片当边框，视觉更整体
+.chat-input {
+  flex: 1;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+// 这两条选择器分属不同的父级，写成并列选择器比拆成两条规则更省产物体积
+.chat-composer .chat-input textarea,
+.chat-input.ant-input {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent;
+  padding: 6px 8px;
+}
+
+// ---------------- Markdown 排版（AI 回复用 react-markdown 渲染） ----------------
+// 作用域限定在 .chat-md，不影响页面其它区域。
+// 重点是表格：智能体的「已收集信息表单」「确认表单」都是 GFM 两列表格。
+.chat-md {
+  & > :first-child {
+    margin-top: 0;
+  }
+
+  & > :last-child {
+    margin-bottom: 0;
+  }
+
+  p {
+    margin: 6px 0;
+  }
+
+  strong {
+    color: @color-text;
+    font-family: @font-medium;
+    font-weight: 700;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 8px 0;
+    font-size: 13px;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  th,
+  td {
+    border: 1px solid @color-border-strong;
+    padding: 6px 10px;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    background: rgba(37, 99, 235, 0.06);
+    font-family: @font-medium;
+    font-weight: 600;
+    white-space: nowrap;
+    color: @color-text;
+  }
+
+  blockquote {
+    margin: 6px 0;
+    padding: 4px 12px;
+    border-left: 3px solid @color-primary;
+    border-radius: 4px;
+    background: rgba(37, 99, 235, 0.05);
+    color: #57606a;
+  }
+
+  ul,
+  ol {
+    margin: 6px 0;
+    padding-left: 22px;
+  }
+
+  code {
+    background: rgba(51, 52, 55, 0.07);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+}
+
+// ---------------- ask_user 选择卡片 ----------------
+// AI 调 ask_user 挂起等待用户作答时，气泡下方会挂这张卡片。
+// 结构：问题 → 选项按钮组 → （多选时）确定按钮。
+.ask-card {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid rgba(37, 99, 235, 0.28);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(79, 70, 229, 0.05));
+
+  &.is-answered {
+    border-color: @color-border;
+    background: rgba(51, 52, 55, 0.03);
+    opacity: 0.8;
+  }
+}
+
+.ask-question {
+  font-size: 14px;
+  font-family: @font-medium;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+// 多选卡片的「确定」按钮行：右对齐，符合「选项在左、提交在右」的习惯
+.ask-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.ask-answered {
+  font-size: 13px;
+  color: @color-text-secondary;
+}
+
+// 自由文本提问（没有选项）时的提示语
+.ask-hint {
+  font-size: 13px;
+  color: @color-text-secondary;
+  padding: 8px 10px;
+  border: 1px dashed @color-border-strong;
+  border-radius: 8px;
+  background: rgba(51, 52, 55, 0.02);
+}

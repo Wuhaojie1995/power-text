@@ -1,0 +1,1648 @@
+// ============================================================
+// 作品集板块
+// ============================================================
+// 这个文件由 home.less 通过 @import 引入，负责首页除「背景层 + 工具栏」以外的全部样式。
+//
+// 组织方式和 home.less 保持一致：
+//   - 颜色 → .home-portfolio-theme-dark() / .home-portfolio-theme-light() 两个 mixin；
+//   - 结构、尺寸、动效 → 下面的基础规则。
+// 两个 mixin 是被 .home-page 调用的，所以写在这里的 `.home-card {}`
+// 最终会编译成 `.home-page .home-card {}`，天然带一层作用域。
+//
+// 唯一例外是登录弹窗：antd Modal 会被 portal 挂到 <body> 下，
+// 不在 .home-page 里面，所以它的样式只能写在文件末尾、用独立的类名自己管主题。
+
+// ============================================================
+// 主题 A：深色
+// ============================================================
+.home-portfolio-theme-dark() {
+  // ---- 文字层级：三级就够。标题、正文、弱化说明 ----
+  .home-title,
+  .home-hero-name,
+  .home-card-title,
+  .home-skill-name,
+  .home-contact-value,
+  .home-timeline-role,
+  .home-brand-name {
+    color: #f1f5f9;
+  }
+
+  .home-desc,
+  .home-card-text {
+    color: rgba(203, 213, 225, 0.76);
+  }
+
+  // 首屏正文单独给更高一档的不透明度。
+  // 其他板块的文字底下是纯色底，0.76 够用；但首屏正文压在会动的粒子云上，
+  // 亮方块偶尔会飘到字缝里 —— 同样是「亮底浅字」，透明度低一档就直接糊掉。
+  .home-hero-role {
+    color: rgba(226, 232, 240, 0.92);
+  }
+
+  // 直接压在粒子背景上的小字再补一层贴边暗影。
+  // 粒子是持续运动的，单靠提高不透明度压不住 —— 总会有亮方块正好飘到某个字上。
+  //
+  // ⚠️ 只用「向下偏移 + 小半径」这一层，**不要加 `0 0 Npx` 的光晕层**（踩过）。
+  // 光晕是不分方向的四周扩散，等于给字套了一圈灰雾，字看着就像没对焦 ——
+  // 实测被指「模糊文字不好看」，就是这一层干的。
+  // 偏移型阴影只在笔画下沿压出一道实边，观感是「字浮在背景上」，而不是「字糊了」。
+  //
+  // 这里刻意不含 .home-title 和 .home-hero-name：96px 的大标题上，
+  // 阴影会顺着笔画外扩成一圈脏边，越描越糊。大标题本来就够粗够白，不需要托。
+  .home-section-head .home-eyebrow,
+  .home-section-head .home-desc,
+  .home-hero-role,
+  .home-hero-latin {
+    text-shadow: 0 1px 2px rgba(3, 6, 15, 0.85);
+  }
+
+  // 弱化一层：卡片副标题、指标说明、时间轴单位、联系项标签
+  .home-card-sub,
+  .home-metric-label,
+  .home-contact-label,
+  .home-timeline-org,
+  .home-brand-sub,
+  .home-contact-note,
+  .home-card-points,
+  .home-skill-note,
+  .home-card-stat {
+    color: rgba(148, 163, 184, 0.9);
+  }
+
+  // 强调色：小标题、百分比、时间区间
+  .home-eyebrow,
+  .home-skill-pct,
+  .home-timeline-period,
+  .home-hero-latin {
+    color: #7dd3fc;
+  }
+
+  // ---- 导航栏 ----
+  // 两档状态，由 .is-scrolled 切换：
+  //   首屏（默认）—— 全透明。导航栏「不存在」，粒子背景一路铺到页面最顶端；
+  //   滚离顶部 —— 换成实底玻璃 + 下边框 + 投影，把栏从滚动的内容里托出来。
+  //
+  // 为什么首屏不给半透明底：0.62 那种半透底会在 y=65px 处留下一条横贯全屏的硬边
+  // （上深下浅），比「压根没有导航栏」更难看。要通透就透到底，
+  // 首屏的文字可读性交给下面那层贴边暗影。
+  .home-nav {
+    background: transparent;
+    border-bottom-color: transparent;
+    box-shadow: none;
+
+    &.is-scrolled {
+      background: rgba(5, 9, 22, 0.9);
+      border-bottom-color: rgba(148, 163, 184, 0.2);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    }
+  }
+
+  // 首屏没有底，品牌名/副标题/导航链接直接压在粒子上，补一层贴边暗影保住可读性。
+  // 只在首屏加：滚动态已经有实底了，再加暗影会让字发虚。
+  // 同样只用偏移层，不加光晕 —— 理由见上面那段的注释
+  .home-nav:not(.is-scrolled) {
+    .home-brand-name,
+    .home-brand-sub,
+    .home-nav-link {
+      text-shadow: 0 1px 2px rgba(3, 6, 15, 0.8);
+    }
+  }
+
+  // 右侧整块的胶囊：首屏也是隐形的 —— 一圈极淡的底 + 描边压在粒子上只会显脏。
+  // 等栏本身变成实底之后再出现，胶囊的形状才有意义（描边是这一块的「形状来源」，
+  // 没有它，胶囊在深色实底里根本看不出边界）
+  .home-nav-cluster {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  // 底色从「冷灰」换成带蓝的玻璃：右侧这一块底下是深蓝的粒子云，
+  // 纯灰底（148,163,184）压在蓝底上会显脏、发闷。加一层内顶高光才看得出是「一块玻璃」，
+  // 否则在实底栏里就是一片没来由的灰。
+  .home-nav.is-scrolled .home-nav-cluster {
+    background: rgba(120, 156, 214, 0.09);
+    border-color: rgba(148, 180, 224, 0.17);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  // 分隔线跟着胶囊一起显隐。首屏留一条悬空的竖线没有意义
+  .home-nav-divider {
+    background: transparent;
+  }
+
+  .home-nav.is-scrolled .home-nav-divider {
+    background: rgba(148, 180, 224, 0.24);
+  }
+
+  // 导航链接只做 hover —— 不做「当前板块」高亮。
+  // 这一页是一屏一屏顺着读的作品集，不是并列的 tab，标一个「选中项」
+  // 反而在暗示「你正在看的是某一页」。
+  //
+  // 悬浮效果是「光子环 + 光标光斑」，形状和动画在下面的基础规则里，
+  // 这里只给颜色。改之前是一块扁平的 rgba(96,165,250,0.18) 蓝底，
+  // 和导航胶囊自己那层淡底几乎同色，悬浮了跟没悬浮一样。
+  //
+  // 现在改成「先把底压暗、再往上打光」：底色比栏底更暗，光斑才亮得出来；
+  // 蓝色铺底 + 蓝色高光的做法，两者亮度差不多，等于白加。
+  .home-nav-link {
+    color: rgba(203, 213, 225, 0.8);
+    background: transparent;
+
+    &:hover,
+    &:focus-visible {
+      color: #ffffff;
+      background: rgba(6, 11, 26, 0.72);
+      // 只留一小圈外发光：发光面积按百分比算只有几个百分点，
+      // 属于「亮但小」，不是那种把整块区域抬起来的糊白
+      box-shadow: 0 0 22px rgba(56, 189, 248, 0.18);
+    }
+  }
+
+  // 光斑：跟着光标走的一小团冷光。位置由 --nav-x / --nav-y 给（见 index.tsx）
+  .home-nav-link::before {
+    background-image: radial-gradient(92px circle at var(--nav-x, 50%) var(--nav-y, 50%),
+        rgba(147, 197, 253, 0.5) 0%,
+        rgba(96, 165, 250, 0.22) 42%,
+        rgba(56, 189, 248, 0) 100%);
+  }
+
+  // 光子环：conic 渐变被 mask 裁成 1px 的环，绕胶囊跑。第一层是跑动的光子，
+  // 第二层是常亮的细环 —— 光子跑到别处时环也得在，否则边框会「闪断」
+  .home-nav-link::after {
+    background-image:
+      conic-gradient(from var(--nav-arc, 0deg),
+        rgba(125, 211, 252, 0) 0deg,
+        rgba(224, 242, 254, 0.98) 20deg,
+        rgba(125, 211, 252, 0) 56deg,
+        rgba(125, 211, 252, 0) 360deg),
+      linear-gradient(rgba(125, 211, 252, 0.32), rgba(125, 211, 252, 0.32));
+  }
+
+  // 首屏的工具栏按钮也是浮在粒子上的。
+  // 注意用 filter: drop-shadow 而不是 text-shadow —— 按钮里是 antd 的 SVG 图标，
+  // text-shadow 只作用于文字，对 SVG 完全不生效，图标会照样糊在粒子里。
+  //
+  // 按钮本身已经不带底了，这一层暗影就更关键：没有它，图标在亮粒子上会直接消失。
+  .home-nav:not(.is-scrolled) .home-tool-btn {
+    filter: drop-shadow(0 1px 3px rgba(3, 6, 15, 0.92));
+  }
+
+  // 登录按钮的实心渐变是品牌色，深浅两套主题共用，所以这里不覆盖配色，
+  // 只调投影 —— 浅底上不需要那么重的影子（见浅色主题那段）
+
+  // ---- 卡片与玻璃面板 ----
+  // 半透明 + backdrop-filter：底下的粒子要能透上来一点，
+  // 卡片才是「浮在场景里」而不是「贴在场景上」。但透明度不能高过 0.6，
+  // 否则粒子从字后面穿过去，正文直接读不了。
+  .home-card,
+  .home-contact-item,
+  .home-metric {
+    background: rgba(13, 21, 44, 0.52);
+    border-color: rgba(148, 163, 184, 0.16);
+  }
+
+  .home-card {
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
+  }
+
+  .home-card:hover,
+  .home-contact-item:hover {
+    border-color: rgba(96, 165, 250, 0.46);
+  }
+
+  .home-card-stat {
+    border-top-color: rgba(148, 163, 184, 0.16);
+  }
+
+  // ---- 标签与筛选 ----
+  .home-chip {
+    background: rgba(96, 165, 250, 0.13);
+    border-color: rgba(96, 165, 250, 0.24);
+    color: #bfdbfe;
+  }
+
+  .home-tag {
+    background: rgba(129, 140, 248, 0.16);
+    color: #c7d2fe;
+  }
+
+  .home-filter {
+    border-color: rgba(148, 163, 184, 0.2);
+    color: rgba(203, 213, 225, 0.8);
+
+    &:hover {
+      border-color: rgba(147, 197, 253, 0.45);
+      color: #ffffff;
+    }
+
+    &.is-active {
+      background: rgba(96, 165, 250, 0.2);
+      border-color: rgba(147, 197, 253, 0.5);
+      color: #ffffff;
+    }
+  }
+
+  // ---- 首屏 ----
+  // 柔光遮罩用页面底色本身（#03060f 系），保证压暗后和背景是同一个色系，
+  // 不会在粒子云上浮出一块「灰板」。
+  //
+  // 几何：椭圆 rx 45% / ry 42%，中心在 (30%, 47%)，渐变在 80% 处归零。
+  // 收紧到「只罩文字列」而不是罩满首屏 —— 椭圆覆盖范围大约是
+  // x 从 -6% 到 66%、y 从 13% 到 81%，正好包住正文块；
+  // 首屏其余部分（右侧大片、上沿、指标条一带）遮罩值都是 0，粒子全亮。
+  //
+  // 验算四条边（t 是归一化距离，超过 0.8 就是 0）：
+  //   上边 y=0    → t = 47/42 = 1.12 > 0.8 → 0
+  //   下边 y=100% → t = 53/42 = 1.26 > 0.8 → 0
+  //   右边 x=100% → t = 70/45 = 1.56 > 0.8 → 0
+  //   左边 x=0    → t = 30/45 = 0.67 → ≈0.5（左边就是视口边缘，外面没有内容，不构成接缝）
+  // 文字块各处的取值：大标题 ≈0.86、正文右端 ≈0.61、标签行 ≈0.64、按钮行 ≈0（按钮自带底色，不需要罩）
+  .home-hero::before {
+    background: radial-gradient(45% 42% at 30% 47%,
+        rgba(3, 6, 15, 0.9) 0%,
+        rgba(3, 6, 15, 0.82) 30%,
+        rgba(3, 6, 15, 0.6) 55%,
+        rgba(3, 6, 15, 0) 80%);
+  }
+
+  // 窄屏（≤940px）必须换一套几何。
+  // 上面那个椭圆是按「文字在左、右边留白」的宽屏版式算的，只盖到 66% 宽；
+  // 但窄屏下正文占满整行（实测 x 5%~95%），右边三分之一会完全裸露在粒子云上（实测踩过）。
+  // 这里换成「比屏幕还宽的椭圆」：rx 95% 让左右都盖到，ry 46% 仍在中部收口，
+  // 所以上下两条边上的强度依然是 0，不会重新长出一条硬边。
+  // 代价是窄屏上背景通透度让位于可读性 —— 这个宽度下没有「文字之外」的空间可用。
+  @media (max-width: 940px) {
+    .home-hero::before {
+      background: radial-gradient(95% 46% at 50% 47%,
+          rgba(3, 6, 15, 0.86) 0%,
+          rgba(3, 6, 15, 0.78) 40%,
+          rgba(3, 6, 15, 0.5) 68%,
+          rgba(3, 6, 15, 0) 88%);
+    }
+  }
+
+  .home-hero-status {
+    border-color: rgba(52, 211, 153, 0.28);
+    background: rgba(52, 211, 153, 0.08);
+    color: #a7f3d0;
+  }
+
+  .home-btn-ghost {
+    border-color: rgba(148, 163, 184, 0.42);
+    color: #cbd5e1;
+
+    &:hover {
+      background: rgba(148, 163, 184, 0.14);
+      border-color: rgba(203, 213, 225, 0.6);
+    }
+  }
+
+  // 指标数字用渐变填充。background-clip:text 需要文字本身透明，
+  // 所以这里给的是 background-image，颜色在结构规则里裁到文字上。
+  .home-metric-value {
+    background-image: linear-gradient(120deg, #7dd3fc 0%, #a5b4fc 55%, #c4b5fd 100%);
+  }
+
+  // ---- 技能条 ----
+  .home-skill-track {
+    background: rgba(148, 163, 184, 0.15);
+  }
+
+  .home-skill-fill {
+    background: linear-gradient(90deg, #38bdf8 0%, #818cf8 100%);
+  }
+
+  // ---- 时间轴 ----
+  .home-timeline::before {
+    background: linear-gradient(180deg, rgba(56, 189, 248, 0.6) 0%, rgba(129, 140, 248, 0.08) 100%);
+  }
+
+  .home-timeline-dot {
+    background: #38bdf8;
+    box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.18);
+  }
+
+  // ---- 页脚 ----
+  .home-footer {
+    border-top-color: rgba(148, 163, 184, 0.14);
+    color: rgba(148, 163, 184, 0.72);
+  }
+}
+
+// ============================================================
+// 主题 B：浅色
+// ============================================================
+.home-portfolio-theme-light() {
+  .home-title,
+  .home-hero-name,
+  .home-card-title,
+  .home-skill-name,
+  .home-contact-value,
+  .home-timeline-role,
+  .home-brand-name {
+    color: #0f172a;
+  }
+
+  .home-desc,
+  .home-card-text,
+  .home-hero-role {
+    color: #4b5563;
+  }
+
+  // 浅色主题**一条文字阴影都不加**。
+  //
+  // 底色是 rgb(247,249,252) 的浅网格 + 浅色光束，深灰字/蓝字的对比度本来就够；
+  // 再套一层白晕只会让字边发虚，看起来像没渲染清楚。
+  //
+  // ⚠️ 必须写成显式的 `none` 而不是「什么都不写」（踩过）：
+  // 看 home.less 的调用方式 —— `.home-page` 先无条件铺一遍深色 mixin，
+  // 浅色 mixin 是**叠在上面的覆盖层**。所以这里不写，深色那层的暗影会一路漏下来，
+  // 浅色主题的导航文字上就挂着一圈灰边，糊得很明显。
+  //
+  // 选择器要和深色那两层一一对应，否则覆盖不掉。
+  .home-section-head .home-eyebrow,
+  .home-section-head .home-desc,
+  .home-hero-role,
+  .home-hero-latin,
+  .home-nav:not(.is-scrolled) .home-brand-name,
+  .home-nav:not(.is-scrolled) .home-brand-sub,
+  .home-nav:not(.is-scrolled) .home-nav-link {
+    text-shadow: none;
+  }
+
+  // 工具按钮同理：深色基础层给了 drop-shadow(暗)，这里必须显式撤销
+  .home-nav:not(.is-scrolled) .home-tool-btn {
+    filter: none;
+  }
+
+  .home-card-sub,
+  .home-metric-label,
+  .home-contact-label,
+  .home-timeline-org,
+  .home-brand-sub,
+  .home-contact-note,
+  .home-card-points,
+  .home-skill-note,
+  .home-card-stat {
+    color: @color-text-secondary;
+  }
+
+  .home-eyebrow,
+  .home-skill-pct,
+  .home-timeline-period,
+  .home-hero-latin {
+    color: @color-primary;
+  }
+
+  // 与深色主题同一套逻辑：首屏全透明，滚离顶部才换成实底玻璃。
+  // 浅色下更要透 —— 半透明白底压在浅色页面上会变成一层灰雾，比深色更明显
+  .home-nav {
+    background: transparent;
+    border-bottom-color: transparent;
+    box-shadow: none;
+
+    &.is-scrolled {
+      background: rgba(255, 255, 255, 0.94);
+      border-bottom-color: rgba(15, 23, 42, 0.1);
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.09);
+    }
+  }
+
+  // 首屏隐形，滚动后出现 —— 同深色主题
+  .home-nav-cluster {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  .home-nav.is-scrolled .home-nav-cluster {
+    background: rgba(15, 23, 42, 0.035);
+    border-color: rgba(15, 23, 42, 0.09);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  }
+
+  .home-nav-divider {
+    background: transparent;
+  }
+
+  .home-nav.is-scrolled .home-nav-divider {
+    background: rgba(15, 23, 42, 0.14);
+  }
+
+  // 只做 hover，不做「当前板块」高亮（理由见深色主题那段）。
+  // 浅色底不能照搬深色那套「压暗底色再打光」—— 白底上压不出亮部，
+  // 反过来做：把胶囊提到近纯白、给一层冷投影，光斑改成淡蓝的一小片。
+  .home-nav-link {
+    color: #475569;
+    background: transparent;
+
+    &:hover,
+    &:focus-visible {
+      color: @color-primary;
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow: 0 4px 16px rgba(37, 99, 235, 0.16);
+    }
+  }
+
+  .home-nav-link::before {
+    background-image: radial-gradient(92px circle at var(--nav-x, 50%) var(--nav-y, 50%),
+        rgba(37, 99, 235, 0.2) 0%,
+        rgba(59, 130, 246, 0.08) 45%,
+        rgba(59, 130, 246, 0) 100%);
+  }
+
+  .home-nav-link::after {
+    background-image:
+      conic-gradient(from var(--nav-arc, 0deg),
+        rgba(37, 99, 235, 0) 0deg,
+        rgba(37, 99, 235, 0.95) 20deg,
+        rgba(37, 99, 235, 0) 56deg,
+        rgba(37, 99, 235, 0) 360deg),
+      linear-gradient(rgba(37, 99, 235, 0.22), rgba(37, 99, 235, 0.22));
+  }
+
+  // 工具按钮的配色在 home.less（工具栏归那个文件管），这里不再重复定义
+
+  // 登录按钮是品牌渐变的实心胶囊，配色两套主题共用。
+  // 浅底上只需要更轻的投影，否则那块蓝色会像浮在半空。
+  // 内顶高光要跟着重写一遍 —— box-shadow 是整条覆盖的，漏掉就没了
+  .home-enter-btn {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26), 0 6px 18px rgba(37, 99, 235, 0.26);
+
+    &:hover {
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26), 0 9px 24px rgba(37, 99, 235, 0.34);
+    }
+  }
+
+  .home-card,
+  .home-contact-item,
+  .home-metric {
+    background: rgba(255, 255, 255, 0.74);
+    border-color: rgba(15, 23, 42, 0.08);
+  }
+
+  .home-card {
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.07);
+  }
+
+  .home-card:hover,
+  .home-contact-item:hover {
+    border-color: rgba(37, 99, 235, 0.3);
+  }
+
+  .home-card-stat {
+    border-top-color: rgba(15, 23, 42, 0.08);
+  }
+
+  .home-chip {
+    background: rgba(37, 99, 235, 0.07);
+    border-color: rgba(37, 99, 235, 0.14);
+    color: @color-primary;
+  }
+
+  .home-tag {
+    background: rgba(79, 70, 229, 0.1);
+    color: #4f46e5;
+  }
+
+  .home-filter {
+    border-color: rgba(15, 23, 42, 0.12);
+    color: #475569;
+
+    &:hover {
+      border-color: rgba(37, 99, 235, 0.35);
+      color: @color-primary;
+    }
+
+    &.is-active {
+      background: rgba(37, 99, 235, 0.1);
+      border-color: rgba(37, 99, 235, 0.38);
+      color: @color-primary;
+    }
+  }
+
+  // 浅色主题下没有 3D 粒子云（WebGL 只在深色底上生效），
+  // 底下是网格与光束，对比度本来就够，所以遮罩给得更轻，免得画面发灰。
+  // 形状与深色主题保持同一套椭圆参数（见 mixin 里深色那段的验算）。
+  .home-hero::before {
+    background: radial-gradient(45% 42% at 30% 47%,
+        rgba(248, 250, 252, 0.92) 0%,
+        rgba(248, 250, 252, 0.82) 30%,
+        rgba(248, 250, 252, 0.6) 55%,
+        rgba(248, 250, 252, 0) 80%);
+  }
+
+  // 窄屏换几何，理由见深色主题那段的注释（正文占满整行，横向椭圆罩不住）
+  @media (max-width: 940px) {
+    .home-hero::before {
+      background: radial-gradient(95% 46% at 50% 47%,
+          rgba(248, 250, 252, 0.94) 0%,
+          rgba(248, 250, 252, 0.88) 40%,
+          rgba(248, 250, 252, 0.6) 68%,
+          rgba(248, 250, 252, 0) 88%);
+    }
+  }
+
+  .home-hero-status {
+    border-color: rgba(16, 185, 129, 0.3);
+    background: rgba(16, 185, 129, 0.08);
+    color: #047857;
+  }
+
+  .home-btn-ghost {
+    border-color: rgba(15, 23, 42, 0.16);
+    color: #475569;
+
+    &:hover {
+      background: rgba(15, 23, 42, 0.05);
+      border-color: rgba(15, 23, 42, 0.3);
+    }
+  }
+
+  .home-metric-value {
+    background-image: linear-gradient(120deg, #2563eb 0%, #4f46e5 55%, #7c3aed 100%);
+  }
+
+  .home-skill-track {
+    background: rgba(15, 23, 42, 0.08);
+  }
+
+  .home-skill-fill {
+    background: linear-gradient(90deg, #2563eb 0%, #6366f1 100%);
+  }
+
+  .home-timeline::before {
+    background: linear-gradient(180deg, rgba(37, 99, 235, 0.42) 0%, rgba(99, 102, 241, 0.06) 100%);
+  }
+
+  .home-timeline-dot {
+    background: @color-primary;
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+  }
+
+  .home-footer {
+    border-top-color: rgba(15, 23, 42, 0.08);
+    color: @color-text-secondary;
+  }
+}
+
+// ============================================================
+// 导航栏
+// ============================================================
+// sticky 而不是 fixed：fixed 会让导航栏脱离文档流，首屏要额外补一块等高 padding，
+// 而且锚点跳转时目标标题会被压在栏下面。sticky 天然占位，滚动到顶就归位。
+//
+// ⚠️ sticky 的失效陷阱：祖先元素上不能有 overflow: hidden。
+// 规范规定一轴设 hidden 时另一轴的 visible 会被强制算成 auto，元素就成了滚动容器；
+// 它自身高度是 auto（跟着内容长高）就永远不滚动，sticky 因此完全失效。
+// 所以 .home-page 用的是 overflow-x: clip 而不是 hidden（见 home.less）。
+//
+// 高度：内容 40px（.home-nav-cluster）+ 内边距 12px×2 + 1px 下边框 = 65px。
+// 首屏的 min-height 按这个数扣（见 .home-hero），改这里要一起改。
+//
+// 底色/边框/投影两档切换（首屏全透明 → 滚动实底），配色在主题 mixin 里给。
+//
+// ⚠️ 这一层是**整屏宽**的（sticky + 滚动态的玻璃底要铺满视口），
+// 里面的内容限宽交给 .home-nav-inner —— 见下。
+.home-nav {
+  position: sticky;
+  top: 0;
+  z-index: 3; // 高于 .home-main 的 z-index:1，内容滚动时从栏下穿过
+  // 横向内边距为 0：真正的左右留白由 .home-nav-inner 给，
+  // 这样导航内容的左右边缘才能和下方正文列**逐像素对齐**
+  padding: 12px 0;
+  border-bottom: 1px solid transparent;
+  transition: background 0.28s ease, border-color 0.28s ease, box-shadow 0.28s ease;
+}
+
+/**
+ * 导航内容列：限宽 + 三栏网格。
+ *
+ * 两件事，缺一件就歪：
+ *
+ * ① **限宽必须和 .home-section 完全一致**（max-width 1180px + 同一套
+ *    clamp(18px,5vw,56px) 横向内边距）。不一致的话，品牌块的左边缘会比下方
+ *    大标题的左边缘更靠外、主按钮会比卡片右边缘更靠外 —— 一条竖线上三个参照物，
+ *    差几像素人眼就能看出来。
+ *
+ * ② **三栏用 grid 的 `1fr auto 1fr`，不用 flex 的 space-between**。
+ *    两侧的 1fr 等宽 ⇒ 中间那栏的**中心**正好落在整行中心上；
+ *    而 space-between 只是把剩余空间均分，中间那块的宽度一旦不对称
+ *    （菜单 + 分隔线 + 两个工具按钮，左边明显比右边"重"），居中就会偏。
+ *    实测 space-between 下菜单中心偏右约 40px，肉眼一眼能看出来。
+ */
+.home-nav-inner {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 clamp(18px, 5vw, 56px);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+}
+
+// 毛玻璃只挂在滚动态。首屏是透明的，挂上去也没东西可糊，
+// 反而会因为「有 backdrop-filter 就自成层」影响粒子层的合成
+.home-nav.is-scrolled {
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+
+.home-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  // 三栏网格的第一栏，靠左 —— 左边缘和大标题的左边缘在同一条竖线上。
+  // 栏间距不再靠 margin/gap 给（grid 的 1fr 已经隔开了），
+  // 这里加外边距只会把它从内容列的左边缘推开，对齐全废
+  justify-self: start;
+
+  // 极窄屏兜底：品牌块的宽度（≈150px）会超过 1fr 栏宽，文字会撞到居中的菜单上。
+  // 副标题是装饰性的（ENGINEERING · AI AGENT），砍掉它整块只剩 logo + 名字 ≈92px
+  @media (max-width: 560px) {
+    .home-brand-sub {
+      display: none;
+    }
+  }
+}
+
+.home-brand-mark {
+  // 40px = 右侧胶囊的高度。整条栏只有这一个高度值，四个元素（方块、胶囊、两个工具钮、
+  // 主按钮）才对得上；改之前是 38px，和 40px 的胶囊差 2px，肉眼能看出「一高一低」
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  font-size: 17px;
+  font-family: @font-medium;
+  font-weight: 700;
+  color: #ffffff;
+  background: @gradient-primary;
+  // 内圈 1px 高光 + 外投影。纯渐变方块看起来只是「一块颜色」，
+  // 补一层内高光才有实体感；投影把它从栏底上托起来，不然会和栏融在一起
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 6px 16px rgba(37, 99, 235, 0.3);
+}
+
+.home-brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.home-brand-name {
+  font-size: 14px;
+  font-family: @font-medium;
+  font-weight: 600;
+}
+
+.home-brand-sub {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+// ---------------- 中间整块：导航项 + 分隔线 + 工具按钮 ----------------
+// 三样东西收进同一个胶囊。改之前链接是裸文字、两个工具按钮是带投影的大圆，
+// 四样东西散在栏里各说各话；收进一个容器之后，中间成为「一整块」。
+//
+// ⚠️ 这里原来有 margin-left: auto（把整块推到最右）。导航栏改成「品牌靠左 / 菜单居中 /
+// 按钮靠右」的三栏之后必须去掉 —— auto 外边距会吃掉全部剩余空间，把内容重新顶回右边，
+// 而且它和 grid 的 justify-self 会互相打架，居中直接失效。
+//
+// 胶囊的底和描边是「滚动态专属」（配色在主题 mixin 里按 .is-scrolled 给），
+// 所以这里要挂 transition —— 否则滚过 8px 的一瞬间它会硬生生跳出来。
+.home-nav-cluster {
+  display: flex;
+  align-items: center;
+  // 三栏网格的第二栏（auto），居中 —— 这一栏的中心就是整行的中心
+  justify-self: center;
+  height: 40px;
+  padding: 0 5px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  transition: background 0.28s ease, border-color 0.28s ease, box-shadow 0.28s ease;
+}
+
+.home-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+
+  // 窄屏直接收起锚点导航：横向排不下，硬塞会挤成两行把栏撑高。
+  // 首屏和页脚都还有入口，功能不受影响。
+  // 分隔线要跟着一起收 —— 不然胶囊里会剩一条孤零零的竖线
+  @media (max-width: 940px) {
+    display: none;
+  }
+}
+
+.home-nav-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  flex-shrink: 0;
+  transition: background 0.28s ease;
+
+  @media (max-width: 940px) {
+    display: none;
+  }
+}
+
+// 只有 hover 一档反馈，不再有 .is-active —— 见主题 mixin 里的说明。
+//
+// 悬浮效果拆成三层（都在下面的伪元素里，颜色由主题 mixin 给）：
+//   1. 链接自己的 background —— 一层底色。深色主题下比栏底更暗，光斑才亮得出来；
+//   2. ::before —— 跟着光标走的光斑（位置来自 --nav-x / --nav-y，index.tsx 实时写）；
+//   3. ::after —— 绕胶囊跑动的「光子环」。
+//
+// ⚠️ 为什么这里破了「不用原生 CSS 变量」的约定：
+// --nav-x/--nav-y 是**运行时的光标坐标**，--nav-arc 是**逐帧插值的角度**，
+// 两者都不可能用 Less 变量表达（Less 是编译期的）。这两个变量只活在这一个组件里、
+// 不参与主题配色，所以不会和 styles/variables.less 那套体系打架。
+//
+// position + z-index:0 是为了给两个伪元素造一个层叠上下文，
+// 让它们能用 z-index:-1 退到文字后面（否则定位伪元素默认画在文字之上，字会被光糊住）。
+.home-nav-link {
+  position: relative;
+  z-index: 0;
+  height: 30px;
+  padding: 0 13px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 13px;
+  font-family: @font-medium;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.2s ease, background 0.2s ease, box-shadow 0.28s ease,
+    text-shadow 0.28s ease, transform 0.2s ease;
+}
+
+// 光标光斑。pointer-events:none 必须给：伪元素盖在链接上会把 hover 自己顶掉，
+// 变成「一进去就出来」的闪烁
+.home-nav-link::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+  pointer-events: none;
+}
+
+// 光子环：把 conic 渐变用 mask 裁成 1px 的环。
+// padding:1px + mask-composite 是「渐变描边」的标准写法 ——
+// 第二层遮罩铺满整个盒子、第一层只铺 content-box，两层做排除，
+// 剩下的正好是那 1px 的 padding 区域。
+//
+// 入场用 scale(0.86) → scale(1) 配一条带过冲的缓动，读起来像「锁定」而不是「淡入」。
+// 注意 mask 系列属性必须写在 mask 简写**之后** —— 简写会把 mask-composite 重置掉。
+.home-nav-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 1px;
+  opacity: 0;
+  transform: scale(0.86);
+  transition: opacity 0.22s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+// 键盘聚焦走同一套反馈：焦点环是「看不见的悬浮」，视觉上不该是两套语言
+.home-nav-link:hover::before,
+.home-nav-link:focus-visible::before {
+  opacity: 1;
+}
+
+.home-nav-link:hover::after,
+.home-nav-link:focus-visible::after {
+  opacity: 1;
+  transform: scale(1);
+  // 2.6s 一圈：再快就成了闪烁的跑马灯，再慢就看不出在动
+  animation: home-nav-arc 2.6s linear infinite;
+}
+
+// 悬浮时整颗胶囊轻轻抬 1px。幅度必须小 —— 导航栏是水平的，
+// 抬多了会看出参差
+.home-nav-link:hover {
+  transform: translateY(-1px);
+}
+
+// --nav-arc 得先注册成 <angle> 才能逐帧插值。不注册的话自定义属性是「字符串」，
+// 动画只会从 0deg 直接跳到 360deg（等于不转）。
+// 用 var(--nav-arc, 0deg) 兜底：万一浏览器不支持 @property，环仍然是常亮的静态环。
+@property --nav-arc {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes home-nav-arc {
+  to {
+    --nav-arc: 360deg;
+  }
+}
+
+.home-enter-btn {
+  // 三栏网格的第三栏，靠右 —— 右边缘和下方卡片列的右边缘在同一条竖线上
+  justify-self: end;
+  // 40×40 的圆，和右侧胶囊等高、和两个工具按钮同宽 —— 整条栏只有 40 这一个尺寸。
+  // 改之前是「38px 高 + 0 18px 内边距 + 文字」，宽度随文案变（登录系统 / 进入业务系统
+  // 差一个字，按钮宽度就跟着跳），这也是它和胶囊对不齐的来源之一。
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  // antd 图标继承 font-size，所以尺寸写在这里。
+  // 20px 在 40px 的圆里占一半，是图标类按钮比较舒服的比例（18px 会显得空）
+  font-size: 20px;
+  appearance: none;
+  // 必须显式写 transparent：<button> 有原生底色（buttonface），appearance:none 去不掉
+  border: 1px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  // 实心渐变圆。改之前是个低对比度的描边按钮，在栏里几乎看不见 ——
+  // 但「登录 / 进业务系统」是这一页唯一的主转化动作，该是整个导航栏里最显眼的东西。
+  // 配色是品牌色，深浅两套主题共用，所以放在这里而不是主题 mixin 里
+  color: #ffffff;
+  background: @gradient-primary;
+  // 内顶高光这一笔是刻意和左上角的品牌方块对齐的：同一个渐变 + 同一道高光，
+  // 首尾两块蓝就有了呼应，而不是「左边一个 logo、右边一个按钮」各做各的
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26), 0 6px 18px rgba(37, 99, 235, 0.32);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.06);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  &:focus-visible {
+    outline: 2px solid @color-primary;
+    outline-offset: 2px;
+  }
+}
+
+// ============================================================
+// 板块通用骨架
+// ============================================================
+.home-main {
+  position: relative;
+  z-index: 1; // 压在 fixed 背景层之上
+}
+
+.home-section {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: clamp(60px, 8vw, 110px) clamp(18px, 5vw, 56px);
+
+  // 锚点跳转的落点补偿：导航栏是 sticky 的，不补的话标题会被压在栏下面
+  scroll-margin-top: 72px;
+}
+
+.home-section-head {
+  max-width: 660px;
+  margin-bottom: 38px;
+}
+
+.home-eyebrow {
+  display: inline-block;
+  margin-bottom: 12px;
+  font-size: 11px;
+  font-family: @font-medium;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.home-title {
+  margin: 0 0 14px;
+  font-size: clamp(25px, 3.3vw, 38px);
+  font-family: @font-medium;
+  font-weight: 700;
+  line-height: 1.22;
+  letter-spacing: -0.01em;
+}
+
+.home-desc {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.78;
+}
+
+// ============================================================
+// 首屏
+// ============================================================
+.home-hero {
+  position: relative;
+  min-height: calc(100vh - 65px); // 65px = 导航栏高度（40 内容 + 12×2 内边距 + 1 边框）
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-top: clamp(40px, 6vw, 72px);
+  padding-bottom: clamp(48px, 7vw, 88px);
+}
+
+/**
+ * 首屏文字底下的柔光遮罩。
+ *
+ * 为什么必须有：正文那两行正好压在粒子云的核心上，纯靠加大字号和加粗解决不了
+ * 「亮底上的浅色小字」——对比度不够就是不够。
+ * 而给文字加 text-shadow 是另一个坑：96px 的大标题上，阴影会顺着笔画外扩成一圈脏边。
+ *
+ * 为什么是「径向」而不是「线性」（踩过）：
+ * 最早写的是 linear-gradient(90deg, ...)。线性渐变纵向是均匀的，也就是说在首屏的
+ * 上、下两条边上遮罩强度都还是非零 —— 于是首屏底边成了一道横贯全屏的硬边：
+ * 边线以上被压暗、边线以下粒子全亮，看起来像首屏被单独裁了一块暗板贴在页面上。
+ *
+ * 换成 radial-gradient 就没了：只要让渐变的 0% 落在椭圆半径以内（也就是收在首屏边界之内），
+ * 四条边上的取值全是 0，和下方背景连成一片，首屏的粒子同样通透。
+ *
+ * 椭圆中心压在文字列（左侧 ~15%）而不是几何中心：文字在左、粒子云主体在中右，
+ * 遮罩只需要罩住文字，右侧该多亮就多亮。
+ *
+ * 颜色由主题 mixin 给（深浅两套底色不一样），这里只写形状。
+ * z-index:0 让它在文字之下、又在 fixed 的粒子画布之上（画布在 .home-page 里，是另一个层）。
+ */
+.home-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+// 首屏里的实际内容全部抬到遮罩之上。绝对定位的 ::before 不占 flex 位置，所以不会多出一个「空行」
+.home-hero>* {
+  position: relative;
+  z-index: 1;
+}
+
+.home-hero-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  margin-bottom: 24px;
+  padding: 6px 14px 6px 11px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+// 呼吸的小绿点：表示「在线 / 开放交流」。纯装饰
+.home-hero-status i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.22);
+  animation: home-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes home-pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.home-hero-name {
+  margin: 0;
+  font-size: clamp(42px, 8vw, 96px);
+  font-family: @font-medium;
+  font-weight: 800;
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+}
+
+// 英文名/站点名：拉开字距、全大写，和中文大标题形成「一密一疏」的对比
+.home-hero-latin {
+  display: block;
+  margin-top: 10px;
+  font-size: clamp(13px, 2vw, 22px);
+  font-family: @font-medium;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+
+.home-hero-role {
+  max-width: 620px;
+  margin: 22px 0 0;
+  font-size: clamp(14px, 1.8vw, 18px);
+  line-height: 1.75;
+}
+
+.home-hero-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.home-tag {
+  padding: 5px 13px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-family: @font-medium;
+  font-weight: 600;
+}
+
+.home-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.home-btn {
+  height: 46px;
+  padding: 0 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  appearance: none;
+  // 必须显式写 transparent：<button> 有原生底色（buttonface，浅灰），
+  // 单靠 appearance:none 去不掉它。不覆盖的话深色主题下会变成「浅灰底 + 浅色文字」，
+  // 幽灵按钮直接糊在背景里看不见。（同 .home-bg-option 的坑）
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  font-size: 14px;
+  font-family: @font-medium;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.22s ease, filter 0.22s ease, background 0.22s ease, border-color 0.22s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+  }
+
+  &:focus-visible {
+    outline: 2px solid @color-primary;
+    outline-offset: 2px;
+  }
+}
+
+.home-btn-primary {
+  color: #ffffff;
+  background: @gradient-primary;
+  box-shadow: 0 10px 26px rgba(37, 99, 235, 0.32);
+}
+
+// ---------------- 首屏指标条 ----------------
+.home-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-top: 52px;
+
+  @media (max-width: 860px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.home-metric {
+  padding: 18px 20px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.home-metric-value {
+  display: block;
+  font-size: clamp(23px, 2.9vw, 32px);
+  font-family: @font-medium;
+  font-weight: 800;
+  line-height: 1.15;
+  // 渐变文字三步：背景图裁到文字形状上 + 文字本身透明。
+  // background-image 由主题 mixin 给，这里只负责「裁」。
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.home-metric-label {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+// ============================================================
+// 卡片网格
+// ============================================================
+.home-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.home-grid-4 {
+  grid-template-columns: repeat(4, 1fr);
+
+  @media (max-width: 1080px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @media (max-width: 620px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.home-grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+
+  @media (max-width: 1020px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @media (max-width: 640px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.home-card {
+  position: relative;
+  padding: 24px;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: transform 0.28s ease, border-color 0.28s ease, box-shadow 0.28s ease;
+}
+
+// 卡片顶部一行：左边序号、右边分类标签
+.home-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.home-card-index {
+  font-size: 12px;
+  font-family: @font-medium;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  opacity: 0.45;
+}
+
+// 项目卡片的分类标签：单独一行，所以要自己撑开上下的间距
+.home-card-tag {
+  display: inline-block;
+  margin-bottom: 12px;
+}
+
+.home-card-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-family: @font-medium;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.home-card-sub {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 10px;
+  font-family: @font-medium;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.home-card-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.78;
+}
+
+.home-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 16px;
+}
+
+.home-chip {
+  padding: 3px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.home-card-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid transparent;
+  font-size: 12px;
+}
+
+.home-card-stat b {
+  font-size: 17px;
+  font-family: @font-medium;
+  font-weight: 700;
+}
+
+// 能力卡里的要点列表。用小圆点而不是 antd List / 原生 ul 默认的圆点：
+// 默认圆点在 12px 字号下偏大偏黑，压在浅色卡片上很抢眼
+.home-card-points {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+
+  li {
+    position: relative;
+    padding-left: 15px;
+    font-size: 12px;
+    line-height: 1.68;
+  }
+
+  li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 7px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    // currentColor：点的颜色自动跟文字走，不用为主题再写一份
+    background: currentColor;
+    opacity: 0.5;
+  }
+}
+
+// ============================================================
+// 项目筛选
+// ============================================================
+.home-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+
+.home-filter {
+  padding: 7px 15px;
+  appearance: none;
+  // 同 .home-btn：不去掉原生 buttonface 底色，深色主题下这几个筛选标签会变成
+  // 一排「浅灰药丸 + 看不清的字」，比不写样式还糟
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 12px;
+  font-family: @font-medium;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+
+  &:focus-visible {
+    outline: 2px solid @color-primary;
+    outline-offset: 2px;
+  }
+}
+
+// ============================================================
+// 技术栈
+// ============================================================
+.home-skills {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px 44px;
+
+  @media (max-width: 780px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.home-skill-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.home-skill-name {
+  font-size: 13px;
+  font-family: @font-medium;
+  font-weight: 500;
+}
+
+.home-skill-pct {
+  font-size: 12px;
+  font-family: @font-medium;
+  font-weight: 700;
+}
+
+.home-skill-track {
+  height: 5px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.home-skill-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  // 宽度由行内 style 给（每项熟练度不同），这里只管过渡
+  transition: width 0.9s cubic-bezier(0.2, 0.8, 0.25, 1);
+}
+
+// 技能名下面那行说明：比技能名再弱一档，只作补充
+.home-skill-note {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+}
+
+// ============================================================
+// 职业履历时间轴
+// ============================================================
+.home-timeline {
+  position: relative;
+  padding-left: 34px;
+}
+
+// 竖线用伪元素而不是给每个 item 画左边框：
+// 边框会在 item 之间的空隙处断开，看着像一串独立的短线
+.home-timeline::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  border-radius: 2px;
+}
+
+.home-timeline-item {
+  position: relative;
+  padding-bottom: 30px;
+
+  &:last-child {
+    padding-bottom: 0;
+  }
+}
+
+.home-timeline-dot {
+  position: absolute;
+  left: -34px;
+  top: 5px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+}
+
+.home-timeline-period {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12px;
+  font-family: @font-medium;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.home-timeline-role {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-family: @font-medium;
+  font-weight: 600;
+}
+
+.home-timeline-org {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+// ============================================================
+// 联系
+// ============================================================
+.home-contact-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+
+  @media (max-width: 860px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.home-contact-item {
+  padding: 22px;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: border-color 0.25s ease;
+}
+
+.home-contact-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-family: @font-medium;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.home-contact-value {
+  display: block;
+  font-size: 16px;
+  font-family: @font-medium;
+  font-weight: 600;
+  // 邮箱地址是一整串没有空格的字符，窄屏下会顶破容器
+  word-break: break-all;
+}
+
+.home-contact-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+// ============================================================
+// 页脚
+// ============================================================
+.home-footer {
+  padding: 30px clamp(18px, 5vw, 56px);
+  border-top: 1px solid transparent;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.9;
+}
+
+// ============================================================
+// 登录弹窗
+// ============================================================
+// 这段刻意不放进主题 mixin：antd Modal 会把自己 portal 到 <body> 下，
+// 根本不在 .home-page 里面，套在 mixin 里编译出来的 `.home-page .xxx` 永远选不中它。
+// 所以这里用独立的 .home-login-modal 自己管主题，靠 is-dark 类切换。
+//
+// 类名注意：antd 6 把弹窗的白色底容器从 .ant-modal-content 改名成了 **.ant-modal-container**
+// （实测 DOM：.ant-modal-root > .ant-modal-mask / .ant-modal-wrap > .ant-modal > .ant-modal-container）。
+// 按 v5 的老类名写，样式会静默失效 —— 深色页面上会弹出一块白板，而且控制台一声不响。
+.home-login-modal {
+
+  // rootClassName 与 className 都给了 .home-login-modal，
+  // 所以这里既从 .ant-modal-root 出发能选中，从 .ant-modal 出发也能选中
+  .ant-modal-container {
+    padding: 30px 28px 26px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.97);
+    box-shadow: 0 30px 80px rgba(15, 23, 42, 0.22);
+  }
+
+  .ant-modal-close {
+    color: @color-text-secondary;
+  }
+
+  // 标题与副标题必须显式给颜色。
+  // 它们只是普通的 h3 / p，antd 的暗色算法不会管；不给颜色就会继承 index.less 里
+  // `:root { color: #333437 }` 那个全局深灰 —— 深色弹窗上等于隐身（踩过）。
+  .home-login-head h3 {
+    color: #0f172a;
+  }
+
+  .home-login-head p {
+    color: @color-text-secondary;
+    opacity: 1;
+  }
+
+  .home-login-tip {
+    color: @color-text-secondary;
+  }
+
+  &.is-dark {
+
+    .ant-modal-container {
+      background: rgba(9, 15, 32, 0.97);
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    .ant-modal-close {
+      color: rgba(203, 213, 225, 0.75);
+
+      &:hover {
+        color: #ffffff;
+      }
+    }
+
+    .home-login-head h3 {
+      color: #f1f5f9;
+    }
+
+    .home-login-head p,
+    .home-login-tip {
+      color: rgba(203, 213, 225, 0.8);
+    }
+
+    // 输入框底色改成半透明浅色，而不是 antd 暗色算法给的 #141414。
+    // #141414 是中性灰，压在这块偏蓝的弹窗底上明显不是一家人 —— 像贴了块灰砖。
+    // 半透明浅色会跟着底色调，视觉上是一层玻璃，和弹窗是一体的。
+    // 两个输入框（普通 / 密码）都带 prefix，渲染出来都是 .ant-input-affix-wrapper，
+    // 内层的 .ant-input 本身是 transparent，不用动。
+    .ant-input-affix-wrapper {
+      background: rgba(148, 163, 184, 0.08);
+    }
+  }
+}
+
+.home-login-head {
+  margin-bottom: 22px;
+  text-align: center;
+}
+
+.home-login-logo {
+  width: 50px;
+  height: 50px;
+  margin: 0 auto 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 15px;
+  font-size: 24px;
+  color: #ffffff;
+  background: @gradient-primary;
+}
+
+.home-login-head h3 {
+  margin: 0 0 4px;
+  font-size: 17px;
+  font-family: @font-medium;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.home-login-head p {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.home-login-submit {
+  height: 42px;
+  border: none;
+  background: @gradient-primary;
+  background-size: 200% 200%;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.28);
+
+  &:hover:not(:disabled) {
+    filter: brightness(1.08);
+    animation: home-submit-flow 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes home-submit-flow {
+
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+// 演示阶段的账号提示。弹窗底在深浅两色下都偏白/偏深，
+// 但这段文字始终坐在弹窗内层，所以统一用中性灰，不跟页面主题变
+.home-login-tip {
+  margin: 0;
+  font-size: 12px;
+  color: @color-text-secondary;
+  text-align: center;
+}

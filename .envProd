@@ -1,0 +1,20 @@
+VITE_ENVIRONMENT="production"
+VITE_TITLE="Agent"
+VITE_CODE="car"
+VITE_PORT="8001"
+VITE_OUTPUT="power-production"
+VITE_BASENAME=""
+VITE_SERVER="https://dev.p3china.com:7700/nbg.web.dev/api"
+VITE_STATIC_SRC="https://dev.p3china.com:7700/nbg.web.dev/resources"
+VITE_MICRO_ENTRY="https://dev.p3china.com:7700/nbg.web.dev"
+VITE_MICRO_WINDOW_ENTRY="https://dev.p3china.com:7700/nbg.web.dev"
+# 生产环境的 Mastra 服务地址。
+# 留空 = 与前端同源部署（前端会自动用当前页面 origin）；
+# 若 Mastra 单独部署在其它域名，在这里填完整地址，例如 https://ai.example.com
+VITE_MASTRA_API_URL=""
+
+
+ALIYUN_NLS_APPKEY=your-aliyun-nls-appkey
+ALIYUN_ACCESS_KEY_ID=your-aliyun-accesskey-id
+ALIYUN_ACCESS_KEY_SECRET=your-aliyun-accesskey-secret
+ALIYUN_NLS_ENDPOINT=nls-gateway-cn-shanghai.aliyuncs.com

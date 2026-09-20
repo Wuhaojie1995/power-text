@@ -1,0 +1,51 @@
+{
+  "name": "patrol-management-platform",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build --mode production",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "dev:mastra": "mastra dev --dir src/mastra",
+    "build:mastra": "mastra build --dir src/mastra"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^6.3.4",
+    "@mastra/client-js": "1.40.0",
+    "@mastra/core": "1.59.0",
+    "@mastra/duckdb": "^1.6.0",
+    "@mastra/editor": "^0.13.11",
+    "@mastra/evals": "^1.7.0",
+    "@mastra/libsql": "1.20.0",
+    "@mastra/loggers": "^1.2.0",
+    "@mastra/memory": "^1.26.0",
+    "@mastra/observability": "^1.16.5",
+    "antd": "^6.6.3",
+    "mastra": "1.25.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^6.30.6",
+    "remark-gfm": "^4.0.1",
+    "three": "^0.180.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.9.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@types/three": "^0.180.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "dotenv": "^16.4.5",
+    "eslint": "^9.9.0",
+    "eslint-plugin-react-hooks": "^5.1.0-rc.0",
+    "eslint-plugin-react-refresh": "^0.4.9",
+    "globals": "^15.9.0",
+    "less": "^4.9.1",
+    "typescript": "^5.5.3",
+    "typescript-eslint": "^8.0.1",
+    "vite": "^5.4.1"
+  }
+}

@@ -1,0 +1,773 @@
+// 作品集板块的样式与主题色单独成文件：它和登录弹窗完全是两件事，
+// 混在一个文件里会让本已八百多行的主题层更难读。
+@import './portfolio.less';
+
+// ---------------- 首页外壳（原登录页） ----------------
+// 配色有两套，由右上角按钮切换，选择存 localStorage（key: patrol_login_theme）。
+//
+// 组织方式：主题相关的「颜色」全部收进 .home-theme-dark() / .home-theme-light() 两个 mixin，
+// 「结构、尺寸、动画」留在基础规则里。这样加减主题只要再写一个 mixin，不用碰布局代码。
+//
+// 为什么深色底效果更好：浅色底上光带要么变成硬划痕、要么糊成灰渍，做不出通透感。
+// 但浅色版仍然保留，方便和站内其它浅色页面保持一致的观感。
+//
+// 动画只改 transform / background-position，避免触发重排。
+
+// ============================================================
+// 主题 A：深色「夜航蓝图」
+// ============================================================
+.home-theme-dark() {
+  background: radial-gradient(1100px 760px at 50% -6%, #10224d 0%, transparent 62%),
+    linear-gradient(165deg, #060b1c 0%, #0a1430 48%, #050915 100%);
+
+  // 左右两团冷光 + 一圈暗角。暗角在深色底上尤其重要：
+  // 它把四周压到近黑，中间的网格和光带才显得「亮起来」。
+  .home-bg-glow {
+    background: radial-gradient(620px 520px at 2% 0%, rgba(37, 99, 235, 0.5), transparent 70%),
+      radial-gradient(680px 560px at 100% 100%, rgba(79, 70, 229, 0.45), transparent 70%),
+      radial-gradient(132% 106% at 50% 50%, transparent 36%, rgba(0, 0, 0, 0.55) 100%);
+  }
+
+  .home-bg-grid {
+    background-image: linear-gradient(rgba(96, 165, 250, 0.17) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(96, 165, 250, 0.17) 1px, transparent 1px);
+  }
+
+  // 深色底上芯部可以顶到接近实色，外面叠两层光晕做出通透感
+  .home-bg-lines i {
+    .home-beam-gradient(90deg, #dbeafe, rgba(96, 165, 250, 0.06), 96%);
+    filter: drop-shadow(0 0 5px rgba(96, 165, 250, 0.81)) drop-shadow(0 0 18px rgba(96, 165, 250, 0.5));
+  }
+
+  .home-bg-cols i {
+    .home-beam-gradient(180deg, #e0e7ff, rgba(129, 140, 248, 0.06), 94%);
+    filter: drop-shadow(0 0 5px rgba(129, 140, 248, 0.81)) drop-shadow(0 0 18px rgba(129, 140, 248, 0.5));
+  }
+
+  .home-bg-sweep {
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(59, 130, 246, 0.1) 34%,
+        rgba(96, 165, 250, 0.3) 47%,
+        rgba(129, 140, 248, 0.36) 53%,
+        rgba(59, 130, 246, 0.1) 66%,
+        transparent 100%);
+  }
+
+  // 工具按钮住在导航胶囊里，所以自己不带底、不带描边、不带投影。
+  //
+  // 改之前这里是「描边圆 + 12% 白底 + 0 4px 16px 投影」—— 等于在胶囊里又套了两个按钮。
+  // 一个胶囊里三套边界（胶囊、圆钮、圆钮）互相打架，而且圆钮的视觉重量压过了导航链接，
+  // 右侧那一块的层级整个乱掉：次要操作比主按钮还抢眼。
+  // 现在静止态就是两个图标（和导航链接同级），只在悬浮 / 面板展开时给一层淡底。
+  .home-tool-btn {
+    border-color: transparent;
+    background: transparent;
+    color: rgba(203, 213, 225, 0.86);
+    box-shadow: none;
+
+    // is-open 是「背景面板已展开」，让按钮保持按下态，用户知道面板是从哪冒出来的
+    &:hover,
+    &.is-open {
+      border-color: rgba(147, 197, 253, 0.34);
+      background: rgba(96, 165, 250, 0.16);
+      color: #ffffff;
+    }
+  }
+
+  // 背景选择面板：深色玻璃片。半透明 + blur 是为了不把底下的动效完全挡死
+  .home-bg-panel {
+    background: rgba(9, 16, 36, 0.9);
+    border-color: rgba(148, 163, 184, 0.24);
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.55);
+  }
+
+  .home-bg-panel-title {
+    color: rgba(148, 163, 184, 0.92);
+  }
+
+  .home-bg-option {
+    color: #e2e8f0;
+
+    &:hover {
+      background: rgba(96, 165, 250, 0.14);
+    }
+
+    &.is-active {
+      background: rgba(96, 165, 250, 0.2);
+      border-color: rgba(147, 197, 253, 0.45);
+    }
+
+    .home-bg-option-name em {
+      background: rgba(96, 165, 250, 0.3);
+      color: #bfdbfe;
+    }
+
+    .home-bg-option-desc {
+      color: rgba(203, 213, 225, 0.72);
+    }
+  }
+
+  .home-bg-panel-tip {
+    color: rgba(148, 163, 184, 0.86);
+  }
+}
+
+// ============================================================
+// 主题 B：浅色「蓝图流光」
+// ============================================================
+.home-theme-light() {
+  background: linear-gradient(160deg, #f8fafc 0%, #eef2ff 55%, #ffffff 100%);
+
+  // 浅色底上「光」本来就跳不出来，四周压暗一点中间才显亮
+  .home-bg-glow {
+    background: radial-gradient(520px 420px at 3% 0%, rgba(37, 99, 235, 0.16), transparent 68%),
+      radial-gradient(560px 460px at 99% 100%, rgba(79, 70, 229, 0.14), transparent 68%),
+      radial-gradient(130% 105% at 50% 50%, transparent 42%, rgba(15, 23, 42, 0.08) 100%);
+  }
+
+  .home-bg-grid {
+    background-image: linear-gradient(rgba(37, 99, 235, 0.075) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(37, 99, 235, 0.075) 1px, transparent 1px);
+  }
+
+  // 浅色底的关键差别：芯部压到七成不透明。细线满不透明会变成一道硬划痕，
+  // 而加 blur 又会把 3px 的竖线糊成灰渍，比划痕更难看——只能靠降不透明度 + 单层柔光晕。
+  .home-bg-lines i {
+    .home-beam-gradient(90deg, #1d4ed8, rgba(37, 99, 235, 0.05), 72%);
+    filter: drop-shadow(0 0 7px rgba(59, 130, 246, 0.55));
+  }
+
+  .home-bg-cols i {
+    .home-beam-gradient(180deg, #4f46e5, rgba(79, 70, 229, 0.05), 72%);
+    filter: drop-shadow(0 0 7px rgba(99, 102, 241, 0.52));
+  }
+
+  .home-bg-sweep {
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(37, 99, 235, 0.06) 34%,
+        rgba(59, 130, 246, 0.17) 47%,
+        rgba(99, 102, 241, 0.22) 53%,
+        rgba(37, 99, 235, 0.06) 66%,
+        transparent 100%);
+  }
+
+
+
+  // 同深色主题：静止态不带底、不带描边，只在悬浮 / 展开时给一层淡底
+  .home-tool-btn {
+    border-color: transparent;
+    background: transparent;
+    color: #475569;
+    box-shadow: none;
+
+    &:hover,
+    &.is-open {
+      border-color: rgba(37, 99, 235, 0.26);
+      background: rgba(37, 99, 235, 0.08);
+      color: @color-primary;
+    }
+  }
+
+  .home-bg-panel {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: rgba(15, 23, 42, 0.1);
+    box-shadow: 0 20px 44px rgba(15, 23, 42, 0.16);
+  }
+
+  .home-bg-panel-title {
+    color: @color-text-secondary;
+  }
+
+  .home-bg-option {
+    color: @color-text;
+
+    &:hover {
+      background: rgba(37, 99, 235, 0.07);
+    }
+
+    &.is-active {
+      background: rgba(37, 99, 235, 0.1);
+      border-color: rgba(37, 99, 235, 0.35);
+    }
+
+    .home-bg-option-name em {
+      background: rgba(37, 99, 235, 0.12);
+      color: @color-primary;
+    }
+
+    .home-bg-option-desc {
+      color: @color-text-secondary;
+    }
+  }
+
+  .home-bg-panel-tip {
+    color: @color-text-secondary;
+  }
+}
+
+// 光带形状：一段「亮头 + 拖尾」的渐变。只负责画渐变，颜色由主题决定。
+// @head 芯部色、@tail 拖尾末端色、@peak 芯部不透明度（深浅主题差别最大的一个参数）
+.home-beam-gradient(@deg, @head, @tail, @peak) {
+  background-image: linear-gradient(@deg,
+      transparent 0%,
+      @tail 22%,
+      fade(@head, 24%) 40%,
+      fade(@head, @peak) 50%,
+      fade(@head, 24%) 60%,
+      @tail 78%,
+      transparent 100%);
+  background-repeat: no-repeat;
+}
+
+// ============================================================
+// 页面骨架
+// ============================================================
+.home-page {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  // 不再垂直居中、也不再留整页 padding：这是一个要往下滚的作品集页，
+  // 内容从顶部开始排。居中是原来「单张登录卡片」的排版方式，
+  // 留着会让首屏上方凭空多出一块空白，而且滚动内容会被 flex 拉伸错位。
+  // 各板块的内边距由自己负责（见文件末尾的 .home-section）。
+  align-items: stretch;
+  // 背景层已改成 fixed（见 .home-bg），这里只需要挡住横向溢出。
+  //
+  // 这里必须是 clip，不能写 hidden（踩过）：
+  // 按 CSS 规范，overflow-x 设成 hidden 时，另一轴的 overflow-y: visible 会被强制计算成 auto，
+  // 于是 .home-page 变成了一个「滚动容器」。而 .home-nav 是它的子元素、position: sticky，
+  // sticky 只相对最近的滚动容器定位 —— .home-page 自身高度是 auto（跟着内容长高），永远不滚动，
+  // 结果就是导航栏的 sticky 完全失效，页面一滚它就跟着滚走了。
+  // clip 只裁剪、不创建滚动容器，横向溢出照样挡住，sticky 也能正常相对视口生效。
+  overflow-x: clip;
+
+  // ---------------- 禁止复制 ----------------
+  // 作品集的文案不该被随手框选带走。更要紧的是：在带「选区截图」行为的浏览器外壳里，
+  // 选一段文字再复制，剪贴板里落下的不是文字而是一张糊图。
+  // 没有选区，就没有东西可被复制、可被截图、可被拖走 —— 一条搞定。
+  //
+  // ⚠️ 它会向下传染：user-select 规范上不是继承属性，但子元素写 auto 时实际取的就是
+  // 祖先的 none。将来若在本页里放输入框，得单独给它写回 user-select: text。
+  // （登录弹窗不受影响：它被 antd portal 到 <body>，不在 .home-page 这棵子树里。）
+  -webkit-user-select: none;
+  user-select: none;
+  // iOS 长按会弹出「拷贝 / 查找」气泡，比选区还烦人，单独关掉
+  -webkit-touch-callout: none;
+
+  // 默认深色；加 .is-light 走浅色。
+  // 外壳（背景层、工具栏）与作品集板块各有一套 mixin：
+  // 前者管「底」，后者管「内容」，拆开是为了改板块配色时不用翻背景那两百行。
+  .home-theme-dark();
+  .home-portfolio-theme-dark();
+
+  &.is-light {
+    .home-theme-light();
+    .home-portfolio-theme-light();
+  }
+}
+
+// ---------------- 3D 背景生效时的底色修正 ----------------
+// 两套 3D 效果都靠「亮点 / 亮雾」在暗底上出彩，而原深色底顶部有一圈偏亮的蓝
+// （#10224d），星点和云团放上去会被衬成灰的、糊成一片。所以这里再压暗一档。
+// 特异性 0,2,0 高于 .home-page 的 0,1,0，直接覆盖，不需要 !important。
+.home-page.has-webgl-bg {
+  background: radial-gradient(1100px 760px at 50% -6%, #0a1636 0%, transparent 60%),
+    linear-gradient(165deg, #03060f 0%, #060c1e 48%, #02040a 100%);
+}
+
+// 3D 背景下的光晕：两侧冷光调淡，免得糊住星野；
+// 但暗角必须留着 —— 它把四周压到近黑，中间的点才显得亮。
+// 暗角也比默认更深一档，这是深空观感的关键。
+.home-page.has-webgl-bg .home-bg-glow {
+  background: radial-gradient(620px 520px at 2% 0%, rgba(37, 99, 235, 0.26), transparent 68%),
+    radial-gradient(680px 560px at 100% 100%, rgba(79, 70, 229, 0.22), transparent 68%),
+    radial-gradient(132% 106% at 50% 50%, transparent 30%, rgba(0, 0, 0, 0.72) 100%);
+}
+
+// 卡片本身是 0.86 的白，平时够用；但 3D 背景里最亮的地方（太阳、光核）
+// 亮度远高于原来那层 CSS 光晕，14% 的透光会把底色带上来，
+// 白色表单被染成粉的、看着不干净。有 3D 背景时把白提纯，投影也换成更深的。
+// 登录表单现在活在 antd Modal 里，卡片底色由 .home-login-modal 负责
+// （见 portfolio.less），这里不再需要给卡片提纯白色。
+
+// 工具条：背景切换 + 主题切换，两个按钮共用一套外观。
+// 纯装饰性控件所以自己写样式（用 antd Button 反而要覆盖一堆默认值）。
+//
+// 从「绝对定位钉在右上角」改成导航栏里的普通 flex 子项：
+// 页面现在有滚动内容，绝对定位的按钮会和导航栏各走各的、滚动时互相穿帮。
+// 位置交给 .home-nav 的布局管，这里只管按钮之间怎么排。
+.home-toolbar {
+  display: flex;
+  align-items: center;
+  // 工具按钮已经和导航项同住一个胶囊，彼此只隔一条分隔线，所以间距收紧。
+  // 原来 10px 是「两个独立圆钮」的间距，放进胶囊里会显得松散
+  gap: 2px;
+
+  @media (max-width: 720px) {
+    gap: 2px;
+  }
+}
+
+.home-tool-btn {
+  // 32px：胶囊内高 38px（40 - 上下 1px 边框），留出上下各 3px 余量
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  // 同 .home-bg-option：去掉原生按钮外观，底色由主题 mixin 决定
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  // 不在这里加 backdrop-filter：外层 .home-nav 已经有一层 blur(14px)，
+  // 嵌套的毛玻璃既费性能又容易在圆角处出现灰边。胶囊自己有底色，够用了
+  // filter 也在过渡里：首屏靠 drop-shadow 把图标从粒子里托出来，滚离顶部后撤销
+  transition: background 0.25s ease, color 0.25s ease, filter 0.28s ease;
+
+  // 键盘可达性：只给键盘聚焦画描边，鼠标点击不画（:focus-visible 的默认语义）
+  &:focus-visible {
+    outline: 2px solid @color-primary;
+    outline-offset: 2px;
+  }
+
+  @media (max-width: 720px) {
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+  }
+}
+
+// ---------------- 背景选择面板 ----------------
+// 颜色在 .home-theme-dark() / .home-theme-light() 里，这里只写结构
+.home-bg-picker {
+  position: relative;
+}
+
+.home-bg-panel {
+  position: absolute;
+  // 16px = 从按钮底边到导航栏底边的距离（按钮在 40px 胶囊里居中，胶囊上下各 12px 内边距）。
+  // 这样面板正好从栏底下方展开，不会压住导航栏自己的下边框
+  top: calc(100% + 16px);
+  right: 0;
+  width: 246px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  backdrop-filter: blur(16px);
+  animation: home-panel-in 0.2s ease;
+}
+
+@keyframes home-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.home-bg-panel-title {
+  margin: 0 0 6px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-family: @font-medium;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.home-bg-option {
+  width: 100%;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  // 必须显式写 transparent：<button> 有原生底色（buttonface，白色），
+  // 不覆盖的话深色主题下会变成「白底 + 浅色文字」，等于看不见。
+  // 顺便把原生外观也去掉，避免不同平台各长一个样。
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+
+  // 面板贴边，外描边会被裁掉，所以用负 offset 画在里面
+  &:focus-visible {
+    outline: 2px solid @color-primary;
+    outline-offset: -2px;
+  }
+
+  .home-bg-option-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-family: @font-medium;
+    font-weight: 600;
+
+    // 角标（3D / GPU）：提示这一项会额外加载一段不轻的渲染代码
+    em {
+      padding: 1px 5px;
+      font-size: 10px;
+      font-style: normal;
+      font-family: @font-medium;
+      font-weight: 600;
+      line-height: 1.4;
+      border-radius: 4px;
+    }
+  }
+
+  .home-bg-option-desc {
+    font-size: 11px;
+    line-height: 1.5;
+  }
+}
+
+.home-bg-panel-tip {
+  margin: 6px 0 2px;
+  padding: 0 8px;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+// ---------------- 3D 背景画布 ----------------
+// 铺满视口。DOM 里排在 .home-bg 之前，两者同为 z-index:0，
+// 于是 .home-bg-glow（兼作暗角）正好压在星点之上——四周压暗，中间才亮得起来。
+//
+// 用 fixed 而不是 absolute：页面本身有几千像素高，absolute + inset:0 会让
+// 画布跟着长到整页那么高（粒子总数不变、摊在几千像素上就稀得看不见了），
+// 而且滚到中段时相机取景框早已离开粒子云。fixed 让它始终是一个视口大小的取景框，
+// 背景纹丝不动地留在身后，只有内容在往上走 —— 这也正是这类「沉浸式单页」的标准做法。
+.home-bg-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 0;
+  pointer-events: none; // 纯装饰，不能挡住卡片上的点击
+  opacity: 0;
+  transition: opacity 0.7s ease;
+}
+
+.home-page.has-webgl-bg .home-bg-canvas {
+  opacity: 1;
+}
+
+// 3D 背景生效时只留静态光晕，会动的层全部关掉。
+// 用 display:none 而不是 opacity:0 —— 后者动画照跑，白烧 CPU。
+.home-page.has-webgl-bg {
+
+  .home-bg-grid,
+  .home-bg-lines,
+  .home-bg-cols,
+  .home-bg-sweep {
+    display: none;
+  }
+}
+
+// ---------------- 动态背景层 ----------------
+// 五个子层按 DOM 顺序堆叠：静态光晕 → 网格 → 横向光束 → 纵向光束 → 斜向扫光
+// fixed 的理由同 .home-bg-canvas：让整个背景成为一层不随内容滚动的视口底片。
+.home-bg {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none; // 纯装饰，不能挡住卡片上的点击
+  z-index: 0;
+
+  >span {
+    position: absolute;
+    display: block;
+  }
+}
+
+// 静态光晕：只负责垫层次，刻意不动。动的元素已经够多，
+// 再来两个会呼吸的大色块就变成「满屏都在晃」。
+.home-bg-glow {
+  inset: 0;
+}
+
+// 细网格：给一点「工程图纸」的秩序感。往外扩一格平移时不露边，
+// 径向遮罩让边缘自然淡出，再缓慢平移一格（循环无缝）
+.home-bg-grid {
+  inset: -44px;
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(circle at 50% 44%, #000 0%, transparent 76%);
+  mask-image: radial-gradient(circle at 50% 44%, #000 0%, transparent 76%);
+  animation: home-grid-drift 46s linear infinite;
+}
+
+// 横向光束：四道贴着网格流动的细光带，像数据在链路上传输。
+// 元素本身铺满整行，真正的「光」是 background-image —— 宽度 30%，
+// 用 background-position 把它从画面左侧扫到右侧，不需要额外的伪元素。
+.home-bg-lines {
+  inset: 0;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+
+  i {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background-size: 30% 100%;
+    will-change: background-position;
+    animation: home-line-x 7s linear infinite;
+  }
+
+  // 四条周期、延迟、透明度都错开，才不会同时到达形成「整排闪烁」
+  i:nth-child(1) {
+    top: 16%;
+    animation-duration: 7s;
+    animation-delay: -3.2s;
+  }
+
+  i:nth-child(2) {
+    top: 38%;
+    animation-duration: 9.5s;
+    animation-delay: -6.4s;
+    opacity: 0.72;
+  }
+
+  i:nth-child(3) {
+    top: 62%;
+    animation-duration: 8.2s;
+    animation-delay: -1.4s;
+  }
+
+  i:nth-child(4) {
+    top: 84%;
+    animation-duration: 11s;
+    animation-delay: -8.6s;
+    opacity: 0.66;
+  }
+}
+
+// 纵向光束：和横向交叉成网格走向，颜色偏靛蓝，用来区分方向
+.home-bg-cols {
+  inset: 0;
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(180deg, transparent, #000 12%, #000 88%, transparent);
+
+  i {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background-size: 100% 30%;
+    will-change: background-position;
+    animation: home-line-y 8.5s linear infinite;
+  }
+
+  i:nth-child(1) {
+    left: 18%;
+    animation-duration: 8.5s;
+    animation-delay: -4s;
+  }
+
+  i:nth-child(2) {
+    left: 40%;
+    animation-duration: 11.5s;
+    animation-delay: -7.5s;
+    opacity: 0.7;
+  }
+
+  i:nth-child(3) {
+    left: 62%;
+    animation-duration: 9.5s;
+    animation-delay: -2s;
+  }
+
+  i:nth-child(4) {
+    left: 84%;
+    animation-duration: 12.5s;
+    animation-delay: -9.8s;
+    opacity: 0.64;
+  }
+}
+
+// 斜向扫光：一道光带周期性掠过整屏，把零散的光线「收」成一口气。
+// 起始位置换算：元素宽 38%，translateX(-130%) 即左移 49% 屏宽，完全出画；
+// 终点 380% 同理从右侧出画，中途不露头也不留尾。
+.home-bg-sweep {
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 38%;
+  will-change: transform, opacity;
+  animation: home-sweep-x 11s ease-in-out infinite;
+}
+
+// 网格平移：正好走一格，循环时无缝衔接
+@keyframes home-grid-drift {
+  from {
+    background-position: 0 0, 0 0;
+  }
+
+  to {
+    background-position: 44px 44px, 44px 44px;
+  }
+}
+
+// 光带横向扫过。背景图宽 30%，按百分比定位时可用行程 70% 屏宽，
+// 取 -30% → 130% 正好从左侧外进、右侧外出
+@keyframes home-line-x {
+  from {
+    background-position: -30% 0;
+  }
+
+  to {
+    background-position: 130% 0;
+  }
+}
+
+// 纵向同理，背景图高 30%
+@keyframes home-line-y {
+  from {
+    background-position: 0 -30%;
+  }
+
+  to {
+    background-position: 0 130%;
+  }
+}
+
+@keyframes home-sweep-x {
+  0% {
+    transform: translateX(-130%) skewX(-12deg);
+    opacity: 0;
+  }
+
+  14% {
+    opacity: 1;
+  }
+
+  58% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateX(380%) skewX(-12deg);
+    opacity: 0;
+  }
+}
+
+// ---------------- 无障碍：系统开启「减少动态效果」时全部静止 ----------------
+@media (prefers-reduced-motion: reduce) {
+
+  .home-bg-grid,
+  .home-hero-status i,
+  .home-skill-fill {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  // 光束和扫光停下来就是几道僵住的亮条，反而突兀，直接不显示
+  .home-bg-lines,
+  .home-bg-cols,
+  .home-bg-sweep {
+    display: none;
+  }
+
+  // 3D 背景在 JS 侧就不会启动，这里再把空画布收掉，避免留个透明层
+  .home-bg-canvas {
+    display: none;
+  }
+
+  // 悬停位移也一并停掉：动画没了但卡片还在往上飘，比不动更怪
+  .home-card:hover,
+  .home-btn:hover,
+  .home-nav-link:hover {
+    transform: none;
+  }
+
+  // 导航链接悬浮时的「光子环」靠 conic 渐变旋转，停转之后只剩一道僵在固定角度的亮弧，
+  // 看着像渲染残留 —— 直接不画。光斑和字色反馈保留，悬浮照样有回应
+  .home-nav-link::after {
+    display: none;
+  }
+}
+
+// ============================================================
+// 页面滚动条
+// ============================================================
+// 页面滚动条挂在 <html> 上，不是 .home-page 的后代，样式没法从页面根节点往下选，
+// 所以主题切换时由 Home/index.tsx 往 <html> 上挂一个类，这里按类出样式。
+// （首屏更早的那一次由 index.html 的内联脚本挂上，免得先闪一下浅色滚动条。）
+//
+// 轨道一律透明：Windows 上默认那条是浅灰实心的，落在深色页面上就是一道白边，
+// 比滚动条本身扎眼得多。透明之后页面底色直接透上来。
+//
+// 滑块刻意不带色相，只用一点点灰白：
+// 这一页的背景是四套不同的动效（粒子、星场、透镜、流体）加一层 CSS 光束，
+// 任何有颜色的滑块都会在某一套背景上「浮起来」——之前用主色蓝就是这样，
+// 看着像贴在画面外面的一根条子。灰白只比背景亮一点点，才像是这一层自己的东西。
+// 亮度也压得很低，且默认态比 hover 态更淡：不主动找它就不该看见它。
+.home-scrollbar(@thumb, @thumbHover) {
+  &::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    // 用 background-color 而不是 background 缩写：缩写会连 background-clip 一起重置，
+    // hover 时下面那圈内缩就没了，滑块会突然变胖一下。
+    background-color: @thumb;
+    // 3px 透明描边 + padding-box 裁剪：轨道 10px，实际画出来只有 4px 宽，
+    // 细到只剩一个存在感，命中区域仍是整个 10px
+    border: 3px solid transparent;
+    border-radius: 3px;
+    background-clip: padding-box;
+    // 过渡也给它：划过时是「亮起来」而不是「跳一下」
+    transition: background-color 0.25s ease;
+
+    &:hover {
+      background-color: @thumbHover;
+    }
+  }
+
+  &::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+html.home-scroll-dark {
+  .home-scrollbar(rgba(226, 232, 240, 0.13), rgba(226, 232, 240, 0.3));
+}
+
+html.home-scroll-light {
+  .home-scrollbar(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.26));
+}
+
+// Firefox 不认 ::-webkit-scrollbar，用标准属性兜一层。
+// 用 @supports 把它和上面那套隔开：两套写在同一个浏览器里会互相覆盖，
+// 谁知道最后生效的是哪个宽度。
+@supports not selector(::-webkit-scrollbar) {
+  html.home-scroll-dark {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(226, 232, 240, 0.2) transparent;
+  }
+
+  html.home-scroll-light {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(15, 23, 42, 0.16) transparent;
+  }
+}

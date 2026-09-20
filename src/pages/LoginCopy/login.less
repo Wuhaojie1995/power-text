@@ -1,0 +1,571 @@
+// ---------------- 登录页 ----------------
+// 配色有两套，由右上角按钮切换，选择存 localStorage（key: patrol_login_theme）。
+//
+// 组织方式：主题相关的「颜色」全部收进 .login-theme-dark() / .login-theme-light() 两个 mixin，
+// 「结构、尺寸、动画」留在基础规则里。这样加减主题只要再写一个 mixin，不用碰布局代码。
+//
+// 为什么深色底效果更好：浅色底上光带要么变成硬划痕、要么糊成灰渍，做不出通透感。
+// 但浅色版仍然保留，方便和站内其它浅色页面保持一致的观感。
+//
+// 动画只改 transform / background-position，避免触发重排。
+
+// ============================================================
+// 主题 A：深色「夜航蓝图」
+// ============================================================
+.login-theme-dark() {
+  background: radial-gradient(1100px 760px at 50% -6%, #10224d 0%, transparent 62%),
+    linear-gradient(165deg, #060b1c 0%, #0a1430 48%, #050915 100%);
+
+  // 左右两团冷光 + 一圈暗角。暗角在深色底上尤其重要：
+  // 它把四周压到近黑，中间的网格和光带才显得「亮起来」。
+  .login-bg-glow {
+    background: radial-gradient(620px 520px at 2% 0%, rgba(37, 99, 235, 0.5), transparent 70%),
+      radial-gradient(680px 560px at 100% 100%, rgba(79, 70, 229, 0.45), transparent 70%),
+      radial-gradient(132% 106% at 50% 50%, transparent 36%, rgba(0, 0, 0, 0.55) 100%);
+  }
+
+  .login-bg-grid {
+    background-image: linear-gradient(rgba(96, 165, 250, 0.17) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(96, 165, 250, 0.17) 1px, transparent 1px);
+  }
+
+  // 深色底上芯部可以顶到接近实色，外面叠两层光晕做出通透感
+  .login-bg-lines i {
+    .login-beam-gradient(90deg, #dbeafe, rgba(96, 165, 250, 0.06), 96%);
+    filter: drop-shadow(0 0 5px rgba(96, 165, 250, 0.81)) drop-shadow(0 0 18px rgba(96, 165, 250, 0.5));
+  }
+
+  .login-bg-cols i {
+    .login-beam-gradient(180deg, #e0e7ff, rgba(129, 140, 248, 0.06), 94%);
+    filter: drop-shadow(0 0 5px rgba(129, 140, 248, 0.81)) drop-shadow(0 0 18px rgba(129, 140, 248, 0.5));
+  }
+
+  .login-bg-sweep {
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(59, 130, 246, 0.1) 34%,
+        rgba(96, 165, 250, 0.3) 47%,
+        rgba(129, 140, 248, 0.36) 53%,
+        rgba(59, 130, 246, 0.1) 66%,
+        transparent 100%);
+  }
+
+  .login-theme-toggle {
+    border-color: rgba(148, 163, 184, 0.45);
+    background: rgba(255, 255, 255, 0.12);
+    color: #e2e8f0;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+
+    &:hover {
+      border-color: rgba(147, 197, 253, 0.65);
+      background: rgba(96, 165, 250, 0.22);
+      color: #ffffff;
+    }
+  }
+}
+
+// ============================================================
+// 主题 B：浅色「蓝图流光」
+// ============================================================
+.login-theme-light() {
+  background: linear-gradient(160deg, #f8fafc 0%, #eef2ff 55%, #ffffff 100%);
+
+  // 浅色底上「光」本来就跳不出来，四周压暗一点中间才显亮
+  .login-bg-glow {
+    background: radial-gradient(520px 420px at 3% 0%, rgba(37, 99, 235, 0.16), transparent 68%),
+      radial-gradient(560px 460px at 99% 100%, rgba(79, 70, 229, 0.14), transparent 68%),
+      radial-gradient(130% 105% at 50% 50%, transparent 42%, rgba(15, 23, 42, 0.08) 100%);
+  }
+
+  .login-bg-grid {
+    background-image: linear-gradient(rgba(37, 99, 235, 0.075) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(37, 99, 235, 0.075) 1px, transparent 1px);
+  }
+
+  // 浅色底的关键差别：芯部压到七成不透明。细线满不透明会变成一道硬划痕，
+  // 而加 blur 又会把 3px 的竖线糊成灰渍，比划痕更难看——只能靠降不透明度 + 单层柔光晕。
+  .login-bg-lines i {
+    .login-beam-gradient(90deg, #1d4ed8, rgba(37, 99, 235, 0.05), 72%);
+    filter: drop-shadow(0 0 7px rgba(59, 130, 246, 0.55));
+  }
+
+  .login-bg-cols i {
+    .login-beam-gradient(180deg, #4f46e5, rgba(79, 70, 229, 0.05), 72%);
+    filter: drop-shadow(0 0 7px rgba(99, 102, 241, 0.52));
+  }
+
+  .login-bg-sweep {
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(37, 99, 235, 0.06) 34%,
+        rgba(59, 130, 246, 0.17) 47%,
+        rgba(99, 102, 241, 0.22) 53%,
+        rgba(37, 99, 235, 0.06) 66%,
+        transparent 100%);
+  }
+
+
+
+  .login-theme-toggle {
+    border-color: rgba(15, 23, 42, 0.14);
+    background: rgba(255, 255, 255, 0.85);
+    color: #334155;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.1);
+
+    &:hover {
+      border-color: rgba(37, 99, 235, 0.45);
+      background: rgba(37, 99, 235, 0.08);
+      color: @color-primary;
+    }
+  }
+}
+
+// 光带形状：一段「亮头 + 拖尾」的渐变。只负责画渐变，颜色由主题决定。
+// @head 芯部色、@tail 拖尾末端色、@peak 芯部不透明度（深浅主题差别最大的一个参数）
+.login-beam-gradient(@deg, @head, @tail, @peak) {
+  background-image: linear-gradient(@deg,
+      transparent 0%,
+      @tail 22%,
+      fade(@head, 24%) 40%,
+      fade(@head, @peak) 50%,
+      fade(@head, 24%) 60%,
+      @tail 78%,
+      transparent 100%);
+  background-repeat: no-repeat;
+}
+
+// ============================================================
+// 页面骨架
+// ============================================================
+.login-page {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 24px;
+  overflow: hidden;
+
+  // 默认深色；加 .is-light 走浅色
+  .login-theme-dark();
+
+  &.is-light {
+    .login-theme-light();
+  }
+}
+
+// 主题切换按钮：右上角悬浮，纯装饰性控件所以自己写样式（用 antd Button 反而要覆盖一堆默认值）
+.login-theme-toggle {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  z-index: 2; // 压在卡片之上
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: background 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+
+  // 键盘可达性：只给键盘聚焦画描边，鼠标点击不画（:focus-visible 的默认语义）
+  &:focus-visible {
+    outline: 2px solid @color-primary;
+    outline-offset: 2px;
+  }
+
+  @media (max-width: 720px) {
+    top: 14px;
+    right: 14px;
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+  }
+}
+
+// ---------------- 动态背景层 ----------------
+// 五个子层按 DOM 顺序堆叠：静态光晕 → 网格 → 横向光束 → 纵向光束 → 斜向扫光
+.login-bg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none; // 纯装饰，不能挡住卡片上的点击
+  z-index: 0;
+
+  >span {
+    position: absolute;
+    display: block;
+  }
+}
+
+// 静态光晕：只负责垫层次，刻意不动。动的元素已经够多，
+// 再来两个会呼吸的大色块就变成「满屏都在晃」。
+.login-bg-glow {
+  inset: 0;
+}
+
+// 细网格：给一点「工程图纸」的秩序感。往外扩一格平移时不露边，
+// 径向遮罩让边缘自然淡出，再缓慢平移一格（循环无缝）
+.login-bg-grid {
+  inset: -44px;
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(circle at 50% 44%, #000 0%, transparent 76%);
+  mask-image: radial-gradient(circle at 50% 44%, #000 0%, transparent 76%);
+  animation: login-grid-drift 46s linear infinite;
+}
+
+// 横向光束：四道贴着网格流动的细光带，像数据在链路上传输。
+// 元素本身铺满整行，真正的「光」是 background-image —— 宽度 30%，
+// 用 background-position 把它从画面左侧扫到右侧，不需要额外的伪元素。
+.login-bg-lines {
+  inset: 0;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+
+  i {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background-size: 30% 100%;
+    will-change: background-position;
+    animation: login-line-x 7s linear infinite;
+  }
+
+  // 四条周期、延迟、透明度都错开，才不会同时到达形成「整排闪烁」
+  i:nth-child(1) {
+    top: 16%;
+    animation-duration: 7s;
+    animation-delay: -3.2s;
+  }
+
+  i:nth-child(2) {
+    top: 38%;
+    animation-duration: 9.5s;
+    animation-delay: -6.4s;
+    opacity: 0.72;
+  }
+
+  i:nth-child(3) {
+    top: 62%;
+    animation-duration: 8.2s;
+    animation-delay: -1.4s;
+  }
+
+  i:nth-child(4) {
+    top: 84%;
+    animation-duration: 11s;
+    animation-delay: -8.6s;
+    opacity: 0.66;
+  }
+}
+
+// 纵向光束：和横向交叉成网格走向，颜色偏靛蓝，用来区分方向
+.login-bg-cols {
+  inset: 0;
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(180deg, transparent, #000 12%, #000 88%, transparent);
+
+  i {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background-size: 100% 30%;
+    will-change: background-position;
+    animation: login-line-y 8.5s linear infinite;
+  }
+
+  i:nth-child(1) {
+    left: 18%;
+    animation-duration: 8.5s;
+    animation-delay: -4s;
+  }
+
+  i:nth-child(2) {
+    left: 40%;
+    animation-duration: 11.5s;
+    animation-delay: -7.5s;
+    opacity: 0.7;
+  }
+
+  i:nth-child(3) {
+    left: 62%;
+    animation-duration: 9.5s;
+    animation-delay: -2s;
+  }
+
+  i:nth-child(4) {
+    left: 84%;
+    animation-duration: 12.5s;
+    animation-delay: -9.8s;
+    opacity: 0.64;
+  }
+}
+
+// 斜向扫光：一道光带周期性掠过整屏，把零散的光线「收」成一口气。
+// 起始位置换算：元素宽 38%，translateX(-130%) 即左移 49% 屏宽，完全出画；
+// 终点 380% 同理从右侧出画，中途不露头也不留尾。
+.login-bg-sweep {
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 38%;
+  will-change: transform, opacity;
+  animation: login-sweep-x 11s ease-in-out infinite;
+}
+
+// 网格平移：正好走一格，循环时无缝衔接
+@keyframes login-grid-drift {
+  from {
+    background-position: 0 0, 0 0;
+  }
+
+  to {
+    background-position: 44px 44px, 44px 44px;
+  }
+}
+
+// 光带横向扫过。背景图宽 30%，按百分比定位时可用行程 70% 屏宽，
+// 取 -30% → 130% 正好从左侧外进、右侧外出
+@keyframes login-line-x {
+  from {
+    background-position: -30% 0;
+  }
+
+  to {
+    background-position: 130% 0;
+  }
+}
+
+// 纵向同理，背景图高 30%
+@keyframes login-line-y {
+  from {
+    background-position: 0 -30%;
+  }
+
+  to {
+    background-position: 0 130%;
+  }
+}
+
+@keyframes login-sweep-x {
+  0% {
+    transform: translateX(-130%) skewX(-12deg);
+    opacity: 0;
+  }
+
+  14% {
+    opacity: 1;
+  }
+
+  58% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateX(380%) skewX(-12deg);
+    opacity: 0;
+  }
+}
+
+// ---------------- 登录卡片 ----------------
+.login-card {
+  position: relative;
+  z-index: 1; // 压在动态背景之上
+  width: 100%;
+  max-width: 880px;
+  display: flex;
+  background: rgba(255, 255, 255, 0.86);
+  border-color: rgba(255, 255, 255, 0.75);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.14);
+  // backdrop-filter: blur(16px) saturate(150%);
+  // border: 1px solid transparent;
+  border-radius: 20px;
+  overflow: hidden;
+  // 注意：这里刻意不写 animation-fill-mode: both。
+  // 保持默认的 none，动画结束后 transform 回到声明值，
+  // 下面的 :hover 位移才不会被动画残留的样式盖住。
+  animation: login-card-in 0.7s cubic-bezier(0.2, 0.8, 0.25, 1);
+  transition: transform 0.4s ease, box-shadow 0.4s ease;
+
+
+  // 窄屏：品牌区与表单上下堆叠（Less 媒体查询嵌套，编译后仍输出 @media 块）
+  @media (max-width: 720px) {
+    flex-direction: column;
+    max-width: 420px;
+  }
+}
+
+@keyframes login-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// ---------------- 左侧品牌区 ----------------
+// 品牌区在深浅两个主题下都是同一套蓝色渐变，不随主题变
+.login-brand {
+  flex: 1;
+  padding: 44px 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 12px;
+  color: #ffffff;
+  min-width: 0;
+  // 渐变首尾同色 + background-size 放大，让底色缓慢横向流动
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 35%, #4f46e5 65%, #3b82f6 100%);
+  background-size: 240% 240%;
+  animation: login-brand-flow 16s ease-in-out infinite;
+
+  // 品牌区里的环境标签：反色处理，在渐变底上也能看清
+  .env-tag {
+    margin-left: 0;
+    background: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+  }
+
+  // 窄屏时品牌区压缩高度并居中
+  @media (max-width: 720px) {
+    padding: 28px 24px;
+    align-items: center;
+    text-align: center;
+  }
+}
+
+@keyframes login-brand-flow {
+
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.login-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  font-size: 26px;
+  background: rgba(255, 255, 255, 0.2);
+  margin-bottom: 8px;
+  animation: login-logo-float 6s ease-in-out infinite;
+}
+
+// 图标轻微上下浮动，给品牌区一点生气（幅度很小，不抢注意力）
+@keyframes login-logo-float {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+// antd 的 Typography.Title 自带样式，这里用 !important 压过去
+.login-title {
+  color: #ffffff !important;
+  margin: 0 !important;
+  font-size: 20px !important;
+  font-family: @font-medium;
+  font-weight: 600 !important;
+  line-height: 1.4 !important;
+}
+
+.login-subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+// ---------------- 右侧表单区 ----------------
+.login-form {
+  flex: 1;
+  padding: 44px 40px;
+  min-width: 0;
+
+  @media (max-width: 720px) {
+    padding: 28px 24px;
+  }
+}
+
+.login-submit {
+  height: 42px;
+  border: none;
+  background: @gradient-primary;
+  background-size: 200% 200%;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.28);
+
+  &:hover:not(:disabled) {
+    filter: brightness(1.08);
+    // 悬停时让渐变轻微流动，和背景动效呼应
+    animation: login-submit-flow 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes login-submit-flow {
+
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+// 演示阶段的账号提示，接入真实登录后随 JSX 一起删掉。
+// 它在白色卡片里，所以两个主题都用浅色主题的次要文字色，不要跟着页面底色变白。
+.login-tip {
+  margin: 0;
+  font-size: 12px;
+  color: @color-text-secondary;
+  text-align: center;
+}
+
+// ---------------- 无障碍：系统开启「减少动态效果」时全部静止 ----------------
+@media (prefers-reduced-motion: reduce) {
+
+  .login-bg-grid,
+  .login-card,
+  .login-brand,
+  .login-logo,
+  .login-submit:hover:not(:disabled) {
+    animation: none !important;
+  }
+
+  // 光束和扫光停下来就是几道僵住的亮条，反而突兀，直接不显示
+  .login-bg-lines,
+  .login-bg-cols,
+  .login-bg-sweep {
+    display: none;
+  }
+
+  .login-card:hover {
+    transform: none;
+  }
+}
