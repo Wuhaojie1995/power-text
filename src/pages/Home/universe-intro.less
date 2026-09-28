@@ -1,0 +1,239 @@
+// ============================================================
+// 开场：宇宙缩放
+// ============================================================
+// 结构见 UniverseIntro.tsx 顶部注释：锁定滚动模型 —— 一个 fixed 的覆盖层
+// （画面 + 文案），开场期间页面滚动被锁住，覆盖层卸载后首页从顶部开始。
+// 两者都吃 --intro-fade 这个变量来收场。
+//
+// 配色不跟主题走：这段是「深空」，浅色主题下也必须是一块黑。
+// 主题是从西安落地之后才开始参与的事 —— 所以这里所有颜色都写死。
+//
+// ⚠️ --intro-fade 由组件按帧写进 .home-intro 的行内样式，值域 1 → 0。
+//    不要给它加 transition：它每帧都在变，过渡只会让画面拖泥带水。
+
+.home-intro {
+  // fixed 覆盖层：不占文档流，开场期间盖在首页正文上面。
+  // z-index 要盖过导航栏（is-intro-hidden 那套只是双保险）
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  // 兜底值。组件挂载后会被行内样式覆盖
+  --intro-fade: 1;
+}
+
+// ---------------- 画面 ----------------
+.home-intro-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 0;
+  pointer-events: none; // 纯画面，不能挡住下面任何东西
+  opacity: var(--intro-fade, 1);
+}
+
+// ---------------- 文案层 ----------------
+.home-intro-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: var(--intro-fade, 1);
+  // 裁掉溢出：暗角那层是个 130% 尺寸的径向渐变，本身就已经超出视口，
+  // 不裁的话它在横向上会被算进页面的滚动宽度里
+  overflow: hidden;
+}
+
+// 暗角 + 底部压暗。
+// 画面本身是亮的（星系核、太阳、城市灯），文案压在上面必须有对比垫底；
+// 给文字加 text-shadow 是另一个坑，大标题上会顺着笔画外扩成一圈脏边
+.home-intro-stage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(130% 108% at 50% 46%, transparent 30%, rgba(2, 4, 12, 0.74) 100%),
+    linear-gradient(180deg, rgba(2, 4, 12, 0.5) 0%, transparent 22%, transparent 52%, rgba(2, 4, 12, 0.82) 100%);
+}
+
+.home-intro-copy {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: clamp(84px, 15vh, 176px);
+  z-index: 1;
+}
+
+// 八张卡全部落在同一处、互相叠着，靠 opacity 交接。
+// 这样切站不用管高度变化（文案长短不一，用文档流撑高会让下面整片跳一下）
+.home-intro-card {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 100%;
+  max-width: 1180px;
+  padding: 0 clamp(18px, 5vw, 56px);
+  opacity: 0;
+  transform: translateX(-50%) translateY(16px);
+  transition: opacity 0.5s ease, transform 0.62s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+
+  &.is-active {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.home-intro-eyebrow {
+  display: block;
+  margin-bottom: 14px;
+  font-size: 11px;
+  font-family: @font-medium;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  // letter-spacing 只在字后面补间距，整行会看着偏右。等量缩回来才是视觉对齐
+  text-indent: 0.3em;
+  text-transform: uppercase;
+  color: rgba(147, 197, 253, 0.92);
+}
+
+.home-intro-title {
+  margin: 0 0 16px;
+  font-size: clamp(28px, 4.4vw, 58px);
+  font-family: @font-medium;
+  font-weight: 700;
+  line-height: 1.16;
+  letter-spacing: -0.02em;
+  color: #f1f5ff;
+  // 亮部（太阳、核球）会从文字背后透出来，给一层很淡的托底，笔画不至于被吃掉
+  text-shadow: 0 2px 30px rgba(2, 6, 20, 0.65);
+}
+
+.home-intro-text {
+  max-width: 600px;
+  margin: 0;
+  font-size: clamp(13px, 1.55vw, 16px);
+  line-height: 1.85;
+  color: rgba(203, 213, 225, 0.84);
+  text-shadow: 0 2px 22px rgba(2, 6, 20, 0.6);
+}
+
+// ---------------- 滚动提示 ----------------
+.home-intro-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 26px;
+  z-index: 1;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  letter-spacing: 0.26em;
+  text-indent: 0.26em;
+  color: rgba(148, 163, 184, 0.8);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+
+  // 只在第一站显示：一旦动了，就不需要再告诉人「可以滚」
+  &.is-on {
+    opacity: 1;
+  }
+
+  i {
+    width: 1px;
+    height: 20px;
+    background: linear-gradient(180deg, transparent, rgba(147, 197, 253, 0.95));
+    animation: intro-scroll-hint 1.9s ease-in-out infinite;
+  }
+}
+
+@keyframes intro-scroll-hint {
+  0% {
+    transform: translateY(-7px) scaleY(0.5);
+    opacity: 0;
+  }
+
+  40% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateY(7px) scaleY(1);
+    opacity: 0;
+  }
+}
+
+// ---------------- 跳过 ----------------
+// 八屏的路，不该强迫任何人走完。扔到右下角，给愿意看的人留路、给赶时间的人留门
+.home-intro-skip {
+  position: absolute;
+  right: clamp(18px, 3.4vw, 46px);
+  bottom: 22px;
+  z-index: 2;
+  height: 34px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  appearance: none;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  backdrop-filter: blur(10px);
+  font-size: 12px;
+  font-family: @font-medium;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: rgba(226, 232, 240, 0.86);
+  cursor: pointer;
+  transition: background 0.24s ease, border-color 0.24s ease, color 0.24s ease;
+
+  &:hover {
+    background: rgba(30, 41, 59, 0.72);
+    border-color: rgba(191, 219, 254, 0.5);
+    color: #ffffff;
+  }
+
+  &:focus-visible {
+    outline: 2px solid rgba(147, 197, 253, 0.9);
+    outline-offset: 3px;
+  }
+}
+
+// ---------------- 开场期间：关掉首页那层 CSS 背景 ----------------
+// 开场画布是带 alpha 的（外壳把 clearAlpha 清零了），页面底下那层东西会直接透出来：
+// 网格、四条横向光束、四条纵向光束、斜向扫光，会一起飘在深空里。
+// 静态光晕那层留着 —— 它兼作暗角，把四周压暗，星点和文字都更好看。
+.home-page.is-intro {
+
+  .home-bg-grid,
+  .home-bg-lines,
+  .home-bg-cols,
+  .home-bg-sweep {
+    display: none;
+  }
+}
+
+// ---------------- 开场期间的导航栏 ----------------
+// 导航栏是 sticky 的，从第一帧就压在画面上：它会和「宇宙」这套语言打架
+// （一个是深空，一个是玻璃胶囊 + 品牌块），也会在最后和落地的首屏重复出现一次。
+// 所以开场期间整条收起来，落地后再放出来 —— 位移加淡出，不是直接 display:none，
+// 那样收放都是硬切。
+.home-nav.is-intro-hidden {
+  opacity: 0;
+  transform: translateY(-16px);
+  pointer-events: none;
+  transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (max-width: 720px) {
+  .home-intro-text {
+    // 手机上文案占的横向空间少，行距收紧一点，免得四五行把画面压掉一半
+    line-height: 1.75;
+  }
+
+  .home-intro-skip {
+    bottom: 68px; // 让开手机浏览器的底部工具条
+  }
+}

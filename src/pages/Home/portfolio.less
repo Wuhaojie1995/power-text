@@ -215,6 +215,26 @@
     border-top-color: rgba(148, 163, 184, 0.16);
   }
 
+  // ---- 联系卡片上的复制按钮 ----
+  // 三态：静止（弱描边胶囊）、悬浮（品牌蓝）、已复制（绿色，短暂出现后由 JS 收回）
+  .home-contact-copy {
+    border-color: rgba(148, 163, 184, 0.24);
+    background: rgba(148, 163, 184, 0.12);
+    color: rgba(203, 213, 225, 0.9);
+
+    &:hover {
+      border-color: rgba(96, 165, 250, 0.5);
+      background: rgba(96, 165, 250, 0.18);
+      color: #ffffff;
+    }
+
+    &.is-copied {
+      border-color: rgba(52, 211, 153, 0.46);
+      background: rgba(52, 211, 153, 0.16);
+      color: #6ee7b7;
+    }
+  }
+
   // ---- 标签与筛选 ----
   .home-chip {
     background: rgba(96, 165, 250, 0.13);
@@ -493,6 +513,26 @@
 
   .home-card-stat {
     border-top-color: rgba(15, 23, 42, 0.08);
+  }
+
+  // ---- 联系卡片上的复制按钮 ----
+  // 同深色主题的三种状态，配色换成浅底版本
+  .home-contact-copy {
+    border-color: rgba(15, 23, 42, 0.12);
+    background: rgba(15, 23, 42, 0.04);
+    color: @color-text-secondary;
+
+    &:hover {
+      border-color: rgba(37, 99, 235, 0.34);
+      background: rgba(37, 99, 235, 0.08);
+      color: @color-primary;
+    }
+
+    &.is-copied {
+      border-color: rgba(5, 150, 105, 0.34);
+      background: rgba(5, 150, 105, 0.1);
+      color: #047857;
+    }
   }
 
   .home-chip {
@@ -1448,6 +1488,13 @@
   font-size: 12px;
 }
 
+// 智能体板块的工程底座：四张能力卡接在上面的链路之后，需要一段独立间距。
+// 只加下边距（timeline 的最后一个 item 已经没有了 padding-bottom），
+// 不复用 .home-grid 的 gap —— 那是卡片之间的距离，不是两段内容之间的距离。
+.home-agent-foundations {
+  margin-top: 44px;
+}
+
 // ============================================================
 // 联系
 // ============================================================
@@ -1486,6 +1533,42 @@
   font-weight: 600;
   // 邮箱地址是一整串没有空格的字符，窄屏下会顶破容器
   word-break: break-all;
+}
+
+// 值 + 复制按钮一行：按钮靠右，宽度留给值自己撑（flex: 1 + min-width: 0 才允许换行）
+.home-contact-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+
+  .home-contact-value {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
+.home-contact-copy {
+  flex: 0 0 auto;
+  // 与左侧 16px 的值首行做视觉对齐，而不是和整块（可能两行的值）居中对齐
+  margin-top: -1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 12px;
+  font-family: @font-medium;
+  line-height: 1.6;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+
+  .anticon {
+    font-size: 12px;
+  }
 }
 
 .home-contact-note {

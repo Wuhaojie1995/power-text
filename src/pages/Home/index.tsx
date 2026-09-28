@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { BgColorsOutlined, MoonOutlined, SunOutlined } from '@ant-design/icons'
+import { BgColorsOutlined, CheckOutlined, CopyOutlined, MoonOutlined, SunOutlined } from '@ant-design/icons'
 import { isAuthed } from '../../auth/auth'
 import { ROUTE_PATHS } from '../../router/paths'
 import type { HomeLoginState } from '../../router/paths'
@@ -14,7 +14,11 @@ import {
 } from './backgrounds/types'
 import type { BackgroundId } from './backgrounds/types'
 import LoginModal from './LoginModal'
+import UniverseIntro from './UniverseIntro'
+import { canRunIntro } from './introProgress'
 import {
+  AGENT_FOUNDATIONS,
+  AGENT_STEPS,
   CONTACTS,
   FOOTER_TEXT,
   JOURNEY,
@@ -26,8 +30,11 @@ import {
   SKILLS,
   STRENGTHS,
 } from './content'
-import type { ProjectCategory } from './content'
+import type { ContactItem, ProjectCategory } from './content'
 import './home.less'
+
+/** 「已复制」提示停留多久后自己收回去 */
+const COPIED_HINT_MS = 1800
 
 /** 主题偏好存储键。注意 index.html 里的首屏底色脚本也读这个键，改名要一起改 */
 const THEME_STORAGE_KEY = 'patrol_login_theme'
@@ -61,6 +68,42 @@ function getInitialBackground(): BackgroundId {
     return matched ? matched.id : DEFAULT_BACKGROUND
   } catch {
     return DEFAULT_BACKGROUND
+  }
+}
+
+/**
+ * 把一段文本写进剪贴板。
+ *
+ * 优先走 navigator.clipboard，但它只在安全上下文（https / localhost）里存在，
+ * 局域网 http 预览下整个 API 都是 undefined，所以留一条 execCommand 兜底。
+ * 兜底的 textarea 挂到 <body> 而不是挂在卡片里：本页全局 user-select: none
+ * （原因见 home.less 的「禁止复制」段），挂在页面内根本选不中，选不中就复制不了。
+ */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // 权限被拒 / 非安全上下文：交给下面的兜底路径
+  }
+
+  try {
+    const el = document.createElement('textarea')
+    el.value = text
+    el.setAttribute('readonly', '')
+    el.style.position = 'fixed'
+    el.style.top = '-1000px'
+    el.style.opacity = '0'
+    el.style.userSelect = 'text'
+    document.body.appendChild(el)
+    el.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(el)
+    return ok
+  } catch {
+    return false
   }
 }
 
@@ -196,6 +239,28 @@ export default function HomePage() {
   const [projectFilter, setProjectFilter] = useState<ProjectCategory | 'all'>('all')
   const bgPickerRef = useRef<HTMLDivElement>(null)
 
+  /** 刚被复制走的那个联系方式的 label；null 表示当前没有「已复制」提示 */
+  const [copiedLabel, setCopiedLabel] = useState<string | null>(null)
+  const copiedTimerRef = useRef<number | null>(null)
+
+  // 卸载时把定时器收掉，避免在已卸载的组件上 setState
+  useEffect(
+    () => () => {
+      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current)
+    },
+    [],
+  )
+
+  /** 复制某个联系方式；成功就在对应卡片上闪一下「已复制」 */
+  async function handleCopyContact(contact: ContactItem) {
+    const ok = await copyText(contact.copy ?? contact.value)
+    if (!ok) return
+
+    if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current)
+    setCopiedLabel(contact.label)
+    copiedTimerRef.current = window.setTimeout(() => setCopiedLabel(null), COPIED_HINT_MS)
+  }
+
   /**
    * 是否已经滚离顶部。首屏导航栏全透明，滚离后换成实底玻璃 + 投影。
    *
@@ -209,6 +274,48 @@ export default function HomePage() {
   const loginState = location.state as HomeLoginState | null
   const needLogin = Boolean(loginState?.needLogin)
   const loginFrom = loginState?.from ?? ROUTE_PATHS.CHAT
+
+  /**
+   * 开场是否启用。
+   *
+   * 两个否定的理由：
+   *   1) 这次是「被守卫踢回来登录」的（needLogin）—— 人正要进业务系统，让他先滚完
+   *      八屏宇宙是纯粹的刁难，直接放行到首屏；
+   *   2) 设备或系统偏好不支持（见 canRunIntro）—— 没有 WebGL 或开了「减少动态效果」时，
+   *      那段 8 倍屏高的空白滚起来什么都没有，比不放更糟。
+   *
+   * 用惰性初值锁住：needLogin 会在下面那个 effect 里被立刻从 history.state 抹掉，
+   * 再往后每帧重算就不是「这次是为什么来的」了。
+   */
+  const [introEnabled] = useState(() => !needLogin && canRunIntro())
+  /**
+   * 开场是否已经结束（走完或跳过）。
+   *
+   * 开场是锁定滚动模型：进行中页面滚动被锁住、滚动位置恒为顶部，
+   * 结束时覆盖层卸载、滚动解锁 —— 首页正文自然从第一屏开始。
+   * 收放导航栏、压住常规背景、强制深色底都看这个值。
+   */
+  const [introDone, setIntroDone] = useState(false)
+  /**
+   * 是否正在「回看」开场。
+   *
+   * 开场走完就整段卸载了，想再看一次本来只能刷新页面。这里补一个入口：
+   * 首屏顶端继续向上滚时把覆盖层重新挂上，进度从最后一站倒着播回星系。
+   */
+  const [introReplay, setIntroReplay] = useState(false)
+  /**
+   * 回看的「保险」。
+   *
+   * 触发一次后先落闩，必须重新向下滚过才允许再触发 —— 回看结束的那一刻
+   * 用户往往还在往上滚（惯性没消），不拦的话覆盖层刚卸载就又被挂上，来回闪。
+   * 放 ref 而不是 effect 里的局部变量：回看期间这个 effect 是卸载状态，
+   * 局部变量会随重建复位，正好像没有保险一样。
+   */
+  const replayArmedRef = useRef(true)
+  /** 开场画面此刻是否正占着整个视口（首次播放中，或回看中） */
+  const introActive = introEnabled && (!introDone || introReplay)
+  const handleIntroFinish = useCallback(() => setIntroDone(true), [])
+  const handleIntroReplayFinish = useCallback(() => setIntroReplay(false), [])
 
   /**
    * 登录成功后要跳去哪。
@@ -286,6 +393,80 @@ export default function HomePage() {
   }, [])
 
   /**
+   * 首屏顶端继续向上滚 → 重新进入开场（倒着播回去）。
+   *
+   * armed 是这里的关键：回看结束时用户通常还在往上滚（惯性未消），
+   * 不拦的话覆盖层刚卸载就又被挂上，画面会来回闪。所以触发一次之后，
+   * 必须先看到一次「向下滚」才重新上膛。
+   */
+  useEffect(() => {
+    if (!introEnabled || !introDone || introReplay) return
+
+    const atTop = () => window.scrollY <= 0
+
+    const enter = () => {
+      if (!replayArmedRef.current || !atTop()) return
+      replayArmedRef.current = false
+      setIntroReplay(true)
+    }
+
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY > 0) {
+        replayArmedRef.current = true
+        return
+      }
+      if (event.deltaY === 0 || !atTop()) return
+      // 拦掉顶端橡皮筋回弹：覆盖层要下一帧才挂上，先被拉出一截白边很难看
+      event.preventDefault()
+      enter()
+    }
+
+    let lastTouchY = 0
+    const onTouchStart = (event: TouchEvent) => {
+      lastTouchY = event.touches[0]?.clientY ?? 0
+    }
+    // 手指往下拖（dy > 0）= 往回看，和滚轮向上的方向一致
+    const onTouchMove = (event: TouchEvent) => {
+      const y = event.touches[0]?.clientY ?? 0
+      const dy = y - lastTouchY
+      lastTouchY = y
+      if (dy < 0 || !atTop()) return
+      event.preventDefault()
+      enter()
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowDown' || event.key === 'PageDown') {
+        replayArmedRef.current = true
+        return
+      }
+      if (event.key !== 'ArrowUp' && event.key !== 'PageUp' && event.key !== 'Home') return
+      if (!atTop()) return
+      event.preventDefault()
+      enter()
+    }
+
+    // 页面一旦离开顶端就重新上膛：滚下去再滚回来，就能再看一次
+    const onScroll = () => {
+      if (window.scrollY > 0) replayArmedRef.current = true
+    }
+
+    window.addEventListener('wheel', onWheel, { passive: false })
+    window.addEventListener('touchstart', onTouchStart, { passive: true })
+    window.addEventListener('touchmove', onTouchMove, { passive: false })
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('scroll', onScroll, { passive: true })
+
+    return () => {
+      window.removeEventListener('wheel', onWheel)
+      window.removeEventListener('touchstart', onTouchStart)
+      window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('scroll', onScroll)
+    }
+  }, [introEnabled, introDone, introReplay])
+
+  /**
    * 让 html/body 的底色跟上主题。
    *
    * 为什么需要这个：首页是整屏深色，但 React 要等 JS 下载解析完才挂载，
@@ -294,15 +475,20 @@ export default function HomePage() {
    * 必须带 !important —— index.less 的 `:root` 是伪类，特异性高于 `html`，靠选择器压不过。
    */
   useEffect(() => {
-    ensureThemeStyleEl().textContent =
-      theme === 'dark' ? `html,body{background-color:${DARK_BG} !important}` : ''
+    // 开场期间一律按深色底走：那一段是深空，浅色底会在加载蒙层淡掉的瞬间
+    // 从白色里「浮」出来一块黑，非常突兀。落地之后 theme 再接管
+    const dark = theme === 'dark' || introActive
+
+    ensureThemeStyleEl().textContent = dark
+      ? `html,body{background-color:${DARK_BG} !important}`
+      : ''
 
     // 滚动条挂在 <html> 上，样式没法从 .home-page 往下选，只能靠这个类。
     // 放在这里是因为它和底色一样属于「跟着主题走」的东西，生命周期也一致：
     // 离开首页时摘掉，业务页就回到默认滚动条。
     const root = document.documentElement
-    root.classList.toggle(SCROLL_CLASS_DARK, theme === 'dark')
-    root.classList.toggle(SCROLL_CLASS_LIGHT, theme === 'light')
+    root.classList.toggle(SCROLL_CLASS_DARK, dark)
+    root.classList.toggle(SCROLL_CLASS_LIGHT, !dark)
 
     return () => {
       // 离开首页时清空，避免深色底色影响其它浅色页面
@@ -310,7 +496,7 @@ export default function HomePage() {
       if (el) el.textContent = ''
       root.classList.remove(SCROLL_CLASS_DARK, SCROLL_CLASS_LIGHT)
     }
-  }, [theme])
+  }, [theme, introActive])
 
   /**
    * 首页挂载时接管 document.title。
@@ -384,10 +570,16 @@ export default function HomePage() {
 
   return (
     <div
-      className={`home-page${theme === 'light' ? ' is-light' : ''}${webglActive ? ' has-webgl-bg' : ''}`}
+      className={`home-page${theme === 'light' ? ' is-light' : ''}${
+        webglActive && !introActive ? ' has-webgl-bg' : ''
+      }${introActive ? ' is-intro' : ''}`}
     >
-      {/* WebGL 背景画布（three 场景与流体模拟共用同一个元素），只有 active 时才有内容 */}
-      <HomeBackground background={background} active={webglActive} />
+      {/*
+        WebGL 背景画布（three 场景与流体模拟共用同一个元素），只有 active 时才有内容。
+        开场期间一律不挂：那一段有自己的画布，同时开两个 WebGL 上下文纯属浪费
+        （浏览器对同时存在的上下文数量本来就有上限），而且开场的画面会完全盖住它。
+      */}
+      <HomeBackground background={background} active={webglActive && !introActive} />
 
       {/*
         CSS 动态背景，纯装饰（aria-hidden 让读屏软件忽略）。
@@ -417,7 +609,9 @@ export default function HomePage() {
       </div>
 
       {/* ---------------- 导航栏 ---------------- */}
-      <header className={`home-nav${scrolled ? ' is-scrolled' : ''}`}>
+      {/* 开场期间整条收起：玻璃胶囊那套语言和「深空」打架，而且落地后它会和首屏重复
+          出现一次。样式见 universe-intro.less 末尾的 .home-nav.is-intro-hidden */}
+      <header className={`home-nav${scrolled ? ' is-scrolled' : ''}${introActive ? ' is-intro-hidden' : ''}`}>
         {/*
           导航栏是整屏宽的一条（sticky + 滚动态的玻璃底要铺满），
           但里面的内容必须收进和 .home-section 同一个 1180px 内容列，
@@ -521,6 +715,24 @@ export default function HomePage() {
       </header>
 
       <main className="home-main">
+        {/*
+          开场：从星系一路落到西安。锁定滚动模型 —— 进行中页面滚动被锁住，
+          覆盖层盖在正文上面；走完（或跳过）即卸载，滚动解锁，
+          首页正文正好从顶部开始。被路由守卫踢回来登录、或设备不支持
+          WebGL 时整段不渲染，首页就是原来的样子。
+
+          回看（introReplay）走的是同一个覆盖层，只是初始进度在终点一侧、
+          进度递减：在首屏顶端继续向上滚就会被挂上，倒着播回星系。
+          key 换掉是为了让每次回看都是全新实例（进度、场景都从起点重来）。
+        */}
+        {introActive && (
+          <UniverseIntro
+            key={introReplay ? 'replay' : 'first'}
+            initialProgress={introReplay ? 1 : 0}
+            onFinish={introReplay ? handleIntroReplayFinish : handleIntroFinish}
+          />
+        )}
+
         {/* ---------------- 首屏 ---------------- */}
         <section className="home-section home-hero" id="hero">
           <span className="home-hero-status">
@@ -566,43 +778,21 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ---------------- 核心能力 ---------------- */}
-        <section className="home-section" id="strengths">
-          <div className="home-section-head">
-            <span className="home-eyebrow">Core Strengths · 核心能力</span>
-            <h2 className="home-title">我能把什么事做成</h2>
-            <p className="home-desc">
-              不是罗列技术名词，而是四件真正交付过、能拿代码和线上系统对上的事。
-            </p>
-          </div>
-
-          <div className="home-grid home-grid-4">
-            {STRENGTHS.map((item) => (
-              <article className="home-card" key={item.index}>
-                <div className="home-card-head">
-                  <span className="home-card-index">{item.index}</span>
-                  <span className="home-chip">{item.tag}</span>
-                </div>
-                <span className="home-card-sub">{item.sub}</span>
-                <h3 className="home-card-title">{item.title}</h3>
-                <p className="home-card-text">{item.text}</p>
-                <ul className="home-card-points">
-                  {item.points.map((point) => (
-                    <li key={point}>{point}</li>
-                  ))}
-                </ul>
-              </article>
-            ))}
-          </div>
-        </section>
-
         {/* ---------------- 项目作品 ---------------- */}
+        {/*
+          板块顺序改过：项目作品现在紧跟在首屏之后。
+          首屏的按钮是「检阅项目作品」，原先点下去要先划过整个「核心能力」板块才到得了，
+          等于承诺了却没给到。改成「先看交付物 → 再看能力抽象 → 最后拆旗舰作品」，
+          首屏那一跳就落在下一屏。
+        */}
         <section className="home-section" id="projects">
           <div className="home-section-head">
             <span className="home-eyebrow">Portfolio · 项目作品</span>
             <h2 className="home-title">交付过的系统</h2>
             <p className="home-desc">
-              每一个都是真实上线、有用户在用的系统。技术栈和版本号取自工程本身，可以直接对照。
+              五个真实上线、有用户在用的方向：一个会自己调工具干活的智能体、四套驾驶舱视图、
+              十个业务子系统、一套跨端代码和一张深度定制的甘特图。
+              技术栈和版本号都取自工程本身，可以直接对照。
             </p>
           </div>
 
@@ -621,6 +811,10 @@ export default function HomePage() {
             ))}
           </div>
 
+          {/*
+            网格固定三列，但筛选后的条数不一定是 3 的倍数 —— 最后一行会空出格子。
+            这是刻意的：让卡片保持同一宽度、按 id 顺序自然流，比为了填满而拉伸卡片更好读。
+          */}
           <div className="home-grid home-grid-3">
             {visibleProjects.map((project) => (
               <article className="home-card" key={project.id}>
@@ -646,14 +840,103 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ---------------- 核心能力 ---------------- */}
+        <section className="home-section" id="strengths">
+          <div className="home-section-head">
+            <span className="home-eyebrow">Core Strengths · 核心能力</span>
+            <h2 className="home-title">上面那些东西是怎么做出来的</h2>
+            <p className="home-desc">
+              从交付物里抽象出来的四件事。这里只讲做法，重复的项目细节已经收进上一屏。
+            </p>
+          </div>
+
+          <div className="home-grid home-grid-4">
+            {STRENGTHS.map((item) => (
+              <article className="home-card" key={item.index}>
+                <div className="home-card-head">
+                  <span className="home-card-index">{item.index}</span>
+                  <span className="home-chip">{item.tag}</span>
+                </div>
+                <span className="home-card-sub">{item.sub}</span>
+                <h3 className="home-card-title">{item.title}</h3>
+                <p className="home-card-text">{item.text}</p>
+                <ul className="home-card-points">
+                  {item.points.map((point) => (
+                    <li key={point}>{point}</li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        {/* ---------------- 智能体 ---------------- */}
+        {/*
+          这是项目作品里第一张卡的展开。单独成板块的理由：智能体是整站唯一一个
+          「不是页面」的交付物，用一张卡片讲不清它到底做了什么，而它恰恰最能说明问题。
+
+          视觉上没有再引入新组件：链路复用 .home-timeline（竖线 + 圆点，天然适合讲顺序），
+          底座复用 .home-card 网格。只有「底板与时间轴之间要留一段间距」是新加的，
+          在 portfolio.less 的 .home-agent-foundations 里。
+        */}
+        <section className="home-section" id="agent">
+          <div className="home-section-head">
+            <span className="home-eyebrow">AI Agent · 智能体工程</span>
+            <h2 className="home-title">一个会自己调工具干活的智能体</h2>
+            <p className="home-desc">
+              用户说一段工地上的大白话，它负责把话拆成结构化数据、查字典、匹配人员、写进业务系统，
+              中间缺什么就问什么。下面是它真正的运行链路，五个步骤与下面的工程底座
+              都取自 src/mastra 里的实现。
+            </p>
+          </div>
+
+          <div className="home-timeline">
+            {AGENT_STEPS.map((step) => (
+              <div className="home-timeline-item" key={step.period}>
+                <span className="home-timeline-dot" aria-hidden="true" />
+                <span className="home-timeline-period">{step.period}</span>
+                <h3 className="home-timeline-role">{step.role}</h3>
+                <span className="home-timeline-org">{step.org}</span>
+                <p className="home-card-text">{step.text}</p>
+                <div className="home-chip-row">
+                  {step.chips.map((chip) => (
+                    <span className="home-chip" key={chip}>
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="home-grid home-grid-4 home-agent-foundations">
+            {AGENT_FOUNDATIONS.map((item) => (
+              <article className="home-card" key={item.index}>
+                <div className="home-card-head">
+                  <span className="home-card-index">{item.index}</span>
+                  <span className="home-chip">{item.tag}</span>
+                </div>
+                <span className="home-card-sub">{item.sub}</span>
+                <h3 className="home-card-title">{item.title}</h3>
+                <p className="home-card-text">{item.text}</p>
+                <ul className="home-card-points">
+                  {item.points.map((point) => (
+                    <li key={point}>{point}</li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </section>
+
         {/* ---------------- 技术栈 ---------------- */}
         <section className="home-section" id="arsenal">
           <div className="home-section-head">
             <span className="home-eyebrow">Tech Arsenal · 技术栈</span>
             <h2 className="home-title">手上在用的工具</h2>
             <p className="home-desc">
-              只列真正在项目里写过、调过、踩过坑的技术。百分比是按项目密度估的相对值，
-              不代表任何官方口径。
+              只列真正在项目里写过、调过、踩过坑的技术，按主线到支线排列。
+              百分比是按项目密度估的相对值，不代表任何官方口径。
             </p>
           </div>
 
@@ -678,7 +961,7 @@ export default function HomePage() {
           <div className="home-section-head">
             <span className="home-eyebrow">Journey · 职业履历</span>
             <h2 className="home-title">从业务系统到智能体</h2>
-            <p className="home-desc">按技术演进的方向排，越往上越近。</p>
+            <p className="home-desc">由近及远排列：现在是智能体，往前是多端与可视化，再往前是 Vue 与原生 JavaScript 的业务模块。</p>
           </div>
 
           <div className="home-timeline">
@@ -712,24 +995,39 @@ export default function HomePage() {
           </div>
 
           <div className="home-contact-grid">
-            {CONTACTS.map((contact) => (
-              <div className="home-contact-item" key={contact.label}>
-                <span className="home-contact-label">{contact.label}</span>
-                {contact.href ? (
-                  <a
-                    className="home-contact-value"
-                    href={contact.href}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {contact.value}
-                  </a>
-                ) : (
-                  <span className="home-contact-value">{contact.value}</span>
-                )}
-                <p className="home-contact-note">{contact.note}</p>
-              </div>
-            ))}
+            {CONTACTS.map((contact) => {
+              const copied = copiedLabel === contact.label
+              return (
+                <div className="home-contact-item" key={contact.label}>
+                  <span className="home-contact-label">{contact.label}</span>
+                  <div className="home-contact-row">
+                    {contact.href ? (
+                      <a
+                        className="home-contact-value"
+                        href={contact.href}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {contact.value}
+                      </a>
+                    ) : (
+                      <span className="home-contact-value">{contact.value}</span>
+                    )}
+                    <button
+                      type="button"
+                      className={`home-contact-copy${copied ? ' is-copied' : ''}`}
+                      onClick={() => void handleCopyContact(contact)}
+                      aria-label={`复制${contact.label}`}
+                      title={`复制${contact.label}`}
+                    >
+                      {copied ? <CheckOutlined /> : <CopyOutlined />}
+                      <span>{copied ? '已复制' : '复制'}</span>
+                    </button>
+                  </div>
+                  <p className="home-contact-note">{contact.note}</p>
+                </div>
+              )
+            })}
           </div>
         </section>
       </main>
