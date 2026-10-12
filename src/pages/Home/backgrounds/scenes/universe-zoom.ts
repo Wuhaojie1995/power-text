@@ -2,6 +2,7 @@ import type * as THREE_NS from 'three'
 import type { SceneContext, SceneInstance } from '../three-scene'
 import { getIntroProgress, INTRO_STAGE_ENDS } from '../../introProgress'
 import { CHINA_FRAME, SATELLITE_LEVELS } from '../satellite-map'
+import { createPlanetSurfaceTexture, type PlanetSurface } from '../planet-textures'
 
 /**
  * 开场：宇宙缩放。
@@ -283,10 +284,11 @@ const SOLAR_ENTER_AT = 0.3
  *
  * 全真比例用不了：太阳半径 696000 km 对水星轨道 5800 万 km，比值 1.2%，
  * 屏幕上太阳会是一个点、行星全是 0.01 像素。整张表用的是**幂压缩**
- * （真实值开 0.5 次幂，锚定地球半径 35 / 地球轨道 430，见 PLANETS），
- * 太阳按同一条曲线本该是 365。150 的旧值压到水星轨道（212）内侧、不吞水星；
- * 现在放大到 300，让太阳在太阳系那一站更显眼 —— 代价是水星（轨道 230、近日点
- * 约 182）会被包进太阳本体里，放大途中随太阳被推远、甩出画面前水星基本看不见。
+ * （真实值开 0.5 次幂，锚定地球半径 35 / 地球轨道 880，见 PLANETS），
+ * 太阳按同一条曲线本该是 365。取 300：让太阳在太阳系那一站足够显眼、仍是
+ * 画面里最大的一颗，同时给内行星留出可见的余地 —— **内行星轨道已整体外推
+ * 到水星 520（近日点约 413）、金星 700、地球 880，全部清出日面（半径 300）之外**，
+ * 不再有行星被太阳本体吞掉（旧值水星 230 / 金星 330 就是被吞的那两颗）。
  * 仍保留「太阳是画面里最大的一颗」这个次序。
  */
 const SUN_RADIUS = 300
@@ -301,6 +303,13 @@ const SOLAR_TILT = 0.62
 const ORBIT_BASE = 0.05
 const SPIN_BASE = 0.5
 const SOLAR_AMBIENT = 0.16
+/**
+ * 行星轨道线的观感。**要深、要看得见、但不能亮**：深钢蓝压到很低的不透明度 ——
+ * 在深空底色上刚够读出一条线，再亮一点就抢戏、像坐标网格。
+ * 改色改浓淡就改这两个值（两处引用共用）。
+ */
+const ORBIT_LINE_COLOR = '#26455f'
+const ORBIT_LINE_OPACITY = 0.1 
 
 interface PlanetSpec {
   /** 半长轴（世界单位） */
@@ -314,6 +323,8 @@ interface PlanetSpec {
   spin: number
   /** 带环行星（土星）：环外径 = 半径 × 该值 */
   ring?: number
+  /** 表面贴图种类，见 planet-textures.ts。给了就用贴图，`color` 退化成兜底底色 */
+  surface: PlanetSurface
 }
 
 /**
@@ -330,20 +341,39 @@ interface PlanetSpec {
  * 于是：木星 117 > 土星 108 > 天王星 70 ≈ 海王星 69 > 地球 35 ≈ 金星 34 >
  * 火星 26 > 水星 22，与真实大小次序一致；金星不再是那颗比火星还小的黄球。
  *
+ * **`color` 现在只是兜底底色，真正决定长相的是 `surface`。** 这几颗球以前是纯色平涂
+ * （土星环也只是个半透明圆盘），放大到一百多像素就是一块贴纸 —— 用户说的
+ * 「水星、金星、木星、土星都不真实」就是它。现在每颗都按自己的特征烘一张表面贴图
+ * （水星环形山、金星浓云、木星纬带加大红斑、土星淡金纬带……见 planet-textures.ts），
+ * 由 createPlanetMaterial 按物体空间经纬度采样，跟着球一起自转。
+ *
  * **轨道值则是幂压缩之后再手工拉开的**，不再是 340 × (真实轨道/AU)^0.5。
  * 那套公式按真实 AU 出来，内圈挤得没法看：金星和地球只差 51，而两颗球的半径
- * 加起来就有 69 —— 转到同一侧时直接叠成一坨。现在按「相邻两颗球的边缘至少
- * 留出小半个身位」重排过，越往外越疏的次序保留（火→木那一段仍然是最大的跳变）。
+ * 加起来就有 69 —— 转到同一侧时直接叠成一坨。
+ * 后来又冒出第二个毛病：太阳半径取到 300 之后，水星（旧值 230）整颗被包进太阳
+ * 本体、金星（330）也只探出一点点，内行星动不动就糊在日面上看不清。
+ * 所以**内圈整体外推**：水星 520（近日点约 413，仍清出日面之外）、金星 700、
+ * 地球 880、火星 1060，相邻边缘都留出足够身位。
+ *
+ * **外圈要「不重叠」是被几何逼出来的**：木星半径 117（直径 234）、土星 108
+ * （直径 216）—— 两者轨道只差 180 时，木星外缘（1437）会越过土星内缘（1392），
+ * **轨道直接叠在一起**；再往外土星外缘和天王星内缘也只差几个单位。所以外圈
+ * 必须按「相邻两颗球的边缘留出可见的缝」重排，落到 280 一档：木星 1340 →
+ * 土星 1620 → 天王星 1900 → 海王星 2180（边缝约 55 / 100 / 140）。
+ * 内圈为此让出一点空间（水星 560→520、地球 960→880），日面余量仍然充足。
+ *
+ * 取景代价：最外圈到 2180 之后，p≈0.40 镜头压得很近时会有行星贴到画面下边缘
+ * （见下面的说明）。这是「外圈够疏」换来的，属可接受的瞬态。
  */
 const PLANETS: readonly PlanetSpec[] = [
-  //         轨道    离心率   半径   颜色         公转    相位   自转
-  { orbit: 230, eccentricity: 0.206, radius: 22, color: '#b0a69c', speed: 2.0, phase: 0.4, spin: 0.5 },   // 水星 0.38R⊕ 0.39AU 88天
-  { orbit: 330, eccentricity: 0.007, radius: 34, color: '#e8c78f', speed: 1.26, phase: 2.1, spin: 0.36 },  // 金星 0.95R⊕ 0.72AU 225天
-  { orbit: 560, eccentricity: 0.093, radius: 26, color: '#d05a34', speed: 0.73, phase: 1.2, spin: 0.92 }, // 火星 0.53R⊕ 1.52AU 687天
-  { orbit: 900, eccentricity: 0.049, radius: 117, color: '#d8b48a', speed: 0.29, phase: 5.3, spin: 1.4 }, // 木星 11.2R⊕ 5.2AU 11.9年
-  { orbit: 1200, eccentricity: 0.057, radius: 108, color: '#e2d3a4', speed: 0.18, phase: 3.1, spin: 1.2, ring: 2.1 }, // 土星 9.4R⊕ 9.5AU 29.5年
-  { orbit: 1550, eccentricity: 0.046, radius: 70, color: '#9fd8dc', speed: 0.11, phase: 0.9, spin: 0.9 }, // 天王星 4.0R⊕ 19.2AU 84年
-  { orbit: 1900, eccentricity: 0.010, radius: 69, color: '#5b7fe8', speed: 0.08, phase: 2.7, spin: 0.85 }, // 海王星 3.9R⊕ 30.1AU 165年
+  //         轨道    离心率   半径   兜底色        公转    相位   自转    表面
+  { orbit: 520, eccentricity: 0.206, radius: 22, color: '#b0a69c', speed: 2.0, phase: 0.4, spin: 0.5, surface: 'mercury' },   // 水星 0.38R⊕ 0.39AU 88天
+  { orbit: 700, eccentricity: 0.007, radius: 34, color: '#e8c78f', speed: 1.26, phase: 2.1, spin: 0.36, surface: 'venus' },   // 金星 0.95R⊕ 0.72AU 225天
+  { orbit: 1060, eccentricity: 0.093, radius: 26, color: '#d05a34', speed: 0.73, phase: 1.2, spin: 0.92, surface: 'mars' },   // 火星 0.53R⊕ 1.52AU 687天
+  { orbit: 1340, eccentricity: 0.049, radius: 117, color: '#d8b48a', speed: 0.29, phase: 5.3, spin: 1.4, surface: 'jupiter' }, // 木星 11.2R⊕ 5.2AU 11.9年
+  { orbit: 1620, eccentricity: 0.057, radius: 108, color: '#e2d3a4', speed: 0.18, phase: 3.1, spin: 1.2, surface: 'saturn', ring: 2.1 }, // 土星 9.4R⊕ 9.5AU 29.5年
+  { orbit: 1900, eccentricity: 0.046, radius: 70, color: '#9fd8dc', speed: 0.11, phase: 0.9, spin: 0.9, surface: 'uranus' },  // 天王星 4.0R⊕ 19.2AU 84年
+  { orbit: 2180, eccentricity: 0.010, radius: 69, color: '#5b7fe8', speed: 0.08, phase: 2.7, spin: 0.85, surface: 'neptune' }, // 海王星 3.9R⊕ 30.1AU 165年
 ]
 
 /** 椭圆轨道的半短轴。太阳在焦点 (a - c, 0) 上，这是开普勒第一定律的几何 */
@@ -363,14 +393,14 @@ function orbitAxes(spec: Pick<PlanetSpec, 'orbit' | 'eccentricity'>): { a: numbe
  *
  * 偏移本身仍然必须存在：整组放大后，地球的轨道点要落在视轴上的 (0, 0, EARTH_Z)，
  * 太阳要是也留在视轴上，太阳就会正好待在地球的正后方 —— 镜头越过太阳平面之前
- * 的那一段里，它（和它那团光晕）会糊在正在长大的地球上
+ * 的那一段里，太阳本体（一颗亮球）会糊在正在长大的地球上
  * （镜头一路沿 -z 笔直飞，一前一后）。
  * 把太阳系整体挪到视轴左下方，视线转向地球、镜头掠过太阳时，
  * 整系顺着画面左下方自然滑出去，地球在正中长大。
  *
  * 取值的依据是**屏幕上分开多远**，不是世界坐标好看：
  * 太阳系这一站镜头离太阳约 5000，偏移 1400 横向 ≈ 16°、900 纵向 ≈ 11°，
- * 远到太阳辉光不会和地球糊在一起，近到整系（含轨道上的地球）都还在画面里。
+ * 远到太阳本体不会和地球糊在一起，近到整系（含轨道上的地球）都还在画面里。
  *
  * 这一对数字现在被三处共用：太阳系本体、星系盘的盘心（见 createScene 里 discGroup
  * 的定位）、以及太空段的视线落点。三处对齐是「星系 → 太阳系是一次纯缩放」的前提，
@@ -389,13 +419,13 @@ const EARTH_RADIUS = 700
 /**
  * 地球在太阳系里的轨道参数 —— 它就是第三颗行星，不被拎到系外。
  *
- * 轨道半径夹在金星（330）和火星（560）之间，离心率取真实值 0.017。
+ * 轨道半径夹在金星（700）和火星（1060）之间，离心率取真实值 0.017。
  * 这里只留几何这一件事：半径由 EARTH_RADIUS × scale 给，自转在 update 里单独写，
  * 公转在 update 里驱动（见 EARTH_ORBIT_RATE）。earthGroup 每帧按这份参数、
  * 走和行星完全相同的椭圆几何（update 里的 orbitAxes）摆到轨道点上。
  */
 const EARTH_ORBIT = {
-  orbit: 430,
+  orbit: 880,
   eccentricity: 0.017,
 }
 
@@ -428,14 +458,14 @@ const EARTH_START_ANGLE = Math.PI + 0.35
  * 「整体放大太阳系」的倍率与区间。
  *
  * 地球不脱离轨道，长大的是轨道本身：轨道半径放大到 SOLAR_EXPAND_MAX 倍
- * （430 → 430 × 8.2 ≈ 3530），天体本身只小幅长大（SOLAR_BODY_EXPAND）。
+ * （880 → 880 × 8.2 ≈ 7220），天体本身只小幅长大（SOLAR_BODY_EXPAND）。
  * 地球始终待在轨道点上，被推远、被甩出画面的是太阳和另外七颗行星。
  *
- * 不这么做不行：满尺寸的地球半径 700，轨道只有 430，留在原尺寸的轨道上长满，
+ * 不这么做不行：满尺寸的地球半径 700，轨道只有 880，留在原尺寸的轨道上长满，
  * 太阳会被整个吞进地球里。
  *
- * 倍率保持 8.2 不动。行星轨道那一轮拉开之后地球的轨道从 340 涨到 430，
- * 放大后的日地距离也就跟着从约 2800 变成约 3530 —— 方向上是好事：
+ * 倍率保持 8.2 不动。内行星外推那一轮把地球的轨道从 430 拉到了 880，
+ * 放大后的日地距离也就跟着从约 3530 变成约 7220 —— 方向上是好事：
  * 太阳被甩得更开，镜头贴上地球时它更不容易从画面角上探回来。
  * 后面几站用的尺度（EARTH_Z / EARTH_RADIUS）和这个数无关，不用动。
  */
@@ -458,14 +488,13 @@ const SOLAR_PLANET_EXPAND = 0.7
  * 其余七颗行星清场的进度区间。
  *
  * 视线 0.43 锁上地球之后，那一站要读的是「只剩下越来越近的地球」（设计原话）。
- * 但行星同比放大到 m 倍是几倍体量，而它们被甩出去的轨道半径最大到 19000 —— 太阳
- * 到地球只有 7700，木星那一圈（8040）正好横穿地球附近，撞上就是一颗糊满镜头的巨球。
- * 所以锁上地球之后主动把它们缩到 0：它们本来就已经被甩到画面外，收掉看不出接缝。
+ * 但行星同比放大到 m 倍是几倍体量，而它们被甩出去的轨道半径最大到约 15200
+ * （海王星 2180 × 8.2 ≈ 17880）—— 太阳到地球约 7220，木星那一圈（1340 × 8.2 ≈ 10990）
+ * 早被甩到地球之外很远处。为保险起见，锁上地球之后仍主动把它们缩到 0：
+ * 反正都已经在画面外，收掉看不出接缝。
  */
 const SOLAR_PLANET_CLEAR_FROM = 0.43
 const SOLAR_PLANET_CLEAR_TO = 0.49
-/** 太阳辉光的世界半径 = SUN_RADIUS × 该值。不随放大变化，理由见 update 里的注释 */
-const SUN_GLOW_FACTOR = 2.0
 /** 云层壳：比地表高一点，镜头最后会从这里穿过去（切口 C 的掩护就是它） */
 const CLOUD_RADIUS = 726
 /** 大气壳：外面那层淡蓝的边 */
@@ -480,9 +509,10 @@ const ATMO_RADIUS = 782
  *
  *   scale 0.053  出生（p 0.28），半径 37 —— 约为木星（117）的三成、和金星（34）
  *                相当（**已经回到行星表里地球该有的那个量级**）。再往下就只剩
- *                几个像素、看不出是个球了，那时唯一的抓手是 earthHalo 那圈蓝晕
- *                也不能再往上太多：地球轨道半径只有 430、太阳本体半径 150，
- *                中间只留 280 —— 地球半径过了两百上下，两者就贴到一起了
+ *                几个像素、看不出是个球了
+ *                也不能再往上太多：地球轨道半径 880、太阳本体半径 300，
+ *                中间留 580 —— 内行星外推之后这条限制宽松了很多，
+ *                地球半径涨到一百多仍和日面分得开
  *   scale 0.06   p 0.40，太阳系那一站走完，半径 42 —— 仍然只是轨道上一颗小行星
  *   scale 1.0    p 0.52，长满，此时画面里只剩它一个
  *
@@ -493,7 +523,6 @@ const ATMO_RADIUS = 782
  * 得再往下滚才慢慢长大 —— 看上去就是「地球被缩没了」。）
  * 进场那一下仍然压在星流掩护里（掩护窗 0.19 → 0.33，见 WARP_CUTS 的 half），
  * 与另外七颗行星同帧，不会各露各的。
- * earthHalo 的淡入（见那个常量）稍晚一点，理由见那个常量。
  *
  * 早先的版本让它 0.22→0.42 就长满，于是「太阳系」那一站里是**地球在画面正中膨胀**，
  * 太阳系被挤到一边滑出去 —— 那是「放大地球」，不是「放大太阳系」。
@@ -508,15 +537,6 @@ const EARTH_BIRTH_AT = 0.28
 /** 长满尺寸的时刻。大气壳的淡入也挂在这附近 */
 const EARTH_FULL_AT = 0.52
 
-/**
- * 小地球光晕（earthHalo）开始点亮的时刻。
- *
- * 不能跟进场同步：太阳系 0.30 刚挂上时，星系刚退场不久（0.31 才彻底消失）——
- * 光晕要是同时全亮，画面上最抢眼的就是那颗蓝色光点，读起来就成了
- * 「太阳系还没站住，地球先抢戏」。等行星各自走开、太阳系站住脚（0.31 之后）
- * 再点亮，地球才从「一颗孤零零的行星」变成「第三颗行星」。
- */
-const EARTH_HALO_FROM = 0.31
 const EARTH_SCALE_TRACK: ReadonlyArray<{ at: number; s: number }> = [
   { at: 0.28, s: 0.053 },
   { at: 0.4, s: 0.06 },
@@ -760,29 +780,6 @@ function cutPulse(p: number, at: number, half: number, power = 1.6): number {
   return t >= 1 ? 0 : (1 - t) ** power
 }
 
-/** 生成一张径向渐变的辉光贴图，给太阳和地球当光晕 */
-function createGlowTexture(THREE: typeof THREE_NS): THREE_NS.CanvasTexture {
-  const size = 128
-  const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
-
-  const painter = canvas.getContext('2d')
-  if (painter) {
-    const gradient = painter.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
-    gradient.addColorStop(0, 'rgba(255,255,255,1)')
-    gradient.addColorStop(0.16, 'rgba(255,255,255,0.44)')
-    gradient.addColorStop(0.45, 'rgba(255,255,255,0.1)')
-    gradient.addColorStop(1, 'rgba(255,255,255,0)')
-    painter.fillStyle = gradient
-    painter.fillRect(0, 0, size, size)
-  }
-
-  const texture = new THREE.CanvasTexture(canvas)
-  texture.colorSpace = THREE.SRGBColorSpace
-  return texture
-}
-
 /** 生成一张纯色 1×1 贴图：异步纹理加载完成前的占位，避免采样到未初始化的 uniform */
 function createSolidTexture(THREE: typeof THREE_NS, r: number, g: number, b: number): THREE_NS.DataTexture {
   const data = new Uint8Array([r, g, b, 255])
@@ -928,9 +925,6 @@ export function createScene(ctx: SceneContext): SceneInstance {
    * 看起来是地球倒着转。累加角速度就没有这个问题：只会减速，不会倒退。
    */
   let earthAngle = EARTH_START_ANGLE
-
-  const glowTexture = createGlowTexture(THREE)
-  disposables.push(glowTexture)
 
   // ============================================================
   // 第 01 / 02 站：星系盘
@@ -1268,6 +1262,19 @@ export function createScene(ctx: SceneContext): SceneInstance {
   // 第 03 站：太阳系
   // ============================================================
 
+  /**
+   * 「不参与辉光」的图层号。
+   *
+   * 这一站只有太阳该有光晕。行星的向阳面本来就亮过辉光阈值（木星、土星尤其），
+   * 不隔出来就会被后处理一颗颗罩上一层雾 —— 那不是谁外挂的贴图，是 UnrealBloomPass
+   * 按全屏亮度算出来的，删不掉，只能不让它们进提亮那一步（机制见 three-scene.ts
+   * 里 BloomOptions.excludeLayer 的注释）。
+   *
+   * 归到这一层的：八颗行星、土星环、轨道线，以及地球和它的月亮。
+   * 太阳留在默认图层（0），照常发光。
+   */
+  const SOLAR_NO_BLOOM_LAYER = 2
+
   const solarGroup = new THREE.Group()
   solarGroup.rotation.x = SOLAR_TILT
   // 整组定死在飞行轴线（x = y = 0）的左下方，不再逐帧漂移（理由见 SOLAR_OFFSET_X 的注释）
@@ -1374,46 +1381,85 @@ export function createScene(ctx: SceneContext): SceneInstance {
   solarGroup.add(sun)
   disposables.push(sunGeometry, sunMaterial)
 
-  const sunGlowMaterial = new THREE.SpriteMaterial({
-    map: glowTexture,
-    color: new THREE.Color('#ff8f3e'),
-    blending: THREE.AdditiveBlending,
-    transparent: true,
-    depthWrite: false,
-    opacity: 0.7,
-  })
-  const sunGlow = new THREE.Sprite(sunGlowMaterial)
-  // 初值即最终值（update 每帧按 SUN_GLOW_FACTOR 重写，见那里的注释）：
-  // 太阳球面放大到 300 之后光晕的倍数收得比较小（2.0），整块暖光不会
-  // 把「太阳系」那一站的画面吃掉大半，也不会把金星整个泡进光里（水星已被太阳本体包住）
-  sunGlow.scale.set(SUN_RADIUS * SUN_GLOW_FACTOR, SUN_RADIUS * SUN_GLOW_FACTOR, 1)
-  solarGroup.add(sunGlow)
-  disposables.push(sunGlowMaterial)
+  // 太阳的辉光（sunGlow 精灵）已按需求移除 —— 太阳只保留本体球面，不再外挂一圈暖光。
+  // 连带只用在这里的 glowTexture、createGlowTexture()、SUN_GLOW_FACTOR 也一并删掉，
+  // 不留死代码。太阳自身的亮度靠 sunMaterial 的米粒/临边着色撑住（见上方材质）。
 
-  // 行星轨道线刻意不画。这些一像素宽的细线在深空里读起来是一层坐标网格，
-  // 把「行星各有各的轨道」压成了「模型摆在一张图纸上」；去掉之后
-  // 八颗球体各转各的，速度差和远近关系反而更清楚。
-  // 轨道本身仍然算着（见 update 里的 orbitAxes），只是不把轨迹画出来。
+  // 行星轨道线：按开普勒椭圆几何（太阳在焦点上）画出来。
+  // 原版刻意没画，因为一像素细线在深空里像坐标网格；现在按需求放出来，
+  // 用很淡的蓝灰、低不透明度，只作「行星各走各的圈」的提示，不抢戏。
+  // 线挂在 solarGroup 下，跟着整系一起被 SOLAR_TILT 倾斜、随放大倍率 m 一起长大；
+  // 行星位置本来就是 ×m，所以轨道按 m 放大后行星始终贴在线圈上。
+  const ORBIT_SEGMENTS = 256
+  const orbitMaterial = new THREE.LineBasicMaterial({
+    color: new THREE.Color(ORBIT_LINE_COLOR),
+    transparent: true,
+    opacity: ORBIT_LINE_OPACITY,
+    depthWrite: false,
+  })
+  const orbitLines: THREE_NS.LineLoop[] = []
+  for (const spec of [...PLANETS, EARTH_ORBIT]) {
+    const a = spec.orbit
+    const e = spec.eccentricity
+    const b = a * Math.sqrt(1 - e * e)
+    const c = a * e
+    const pts = new Float32Array(ORBIT_SEGMENTS * 3)
+    for (let i = 0; i < ORBIT_SEGMENTS; i += 1) {
+      const phi = (i / ORBIT_SEGMENTS) * Math.PI * 2
+      // 与 update 里行星定位同一套椭圆：x = a·cosφ − c，z = b·sinφ，y = 0
+      pts[i * 3] = Math.cos(phi) * a - c
+      pts[i * 3 + 1] = 0
+      pts[i * 3 + 2] = Math.sin(phi) * b
+    }
+    const geom = new THREE.BufferGeometry()
+    geom.setAttribute('position', new THREE.BufferAttribute(pts, 3))
+    const loop = new THREE.LineLoop(geom, orbitMaterial)
+    loop.frustumCulled = false
+    // 轨道线也排除在辉光之外：它很淡，但贴着行星走，泛光会跟着亮起来
+    loop.layers.set(SOLAR_NO_BLOOM_LAYER)
+    solarGroup.add(loop)
+    disposables.push(geom)
+    orbitLines.push(loop)
+  }
+  disposables.push(orbitMaterial)
 
   /**
-   * 行星材质：朗伯光照 + 明暗交界柔化。
+   * 行星材质：表面贴图 + 朗伯光照 + 明暗交界柔化。
    *
-   * 不用 MeshBasicMaterial 平涂 —— 球体没有明暗，放大之后就是一块贴纸。
+   * 三层缺一不可：
+   *   1. **表面贴图**。球面 UV 用**物体空间**的经纬度算（和地球那份是同一套公式），
+   *      所以贴图跟着球自转，而不是跟着相机跑。贴图是 sRGB 的，采样时由 GPU 解到线性。
+   *   2. **朗伯光照**，光源是太阳。太阳方向由 uSunPos 每帧传入，行星公转到不同位置时
+   *      被照亮的那一半会跟着转。
+   *   3. **明暗交界柔化**。指数 0.85 把交界附近稍微提亮，否则在几十像素的尺寸上，
+   *      暗面会「吃掉」大半个球。
+   *
+   * 贴图拿不到时（画布没有 2D 上下文，见 planet-textures.ts）退化成纯色球：
+   * uHasMap 归零，uColor 原样输出，就是原来的平涂色。
    */
-  function createPlanetMaterial(spec: Pick<PlanetSpec, 'color'>): THREE_NS.ShaderMaterial {
+  function createPlanetMaterial(
+    spec: Pick<PlanetSpec, 'color'>,
+    map: THREE_NS.Texture | null,
+  ): THREE_NS.ShaderMaterial {
     return new THREE.ShaderMaterial({
       uniforms: {
-        uColor: { value: new THREE.Color(spec.color) },
+        // 有贴图时底色让位给白色，颜色全部由贴图给；uColor 只当兜底
+        uColor: { value: new THREE.Color(map ? '#ffffff' : spec.color) },
+        uMap: { value: map },
+        uHasMap: { value: map ? 1 : 0 },
         uSunPos: solarSunPos,
         uAmbient: { value: SOLAR_AMBIENT },
       },
       vertexShader: /* glsl */ `
         uniform vec3 uSunPos;
         varying vec3 vNormal;
+        varying vec3 vObj;
         varying vec3 vToSun;
 
         void main() {
           vNormal = normalize(normalMatrix * normal);
+          // 经纬度要跟着球走、不能跟着相机走，所以另存一份物体空间坐标
+          vObj = normalize(position);
           vec4 worldPos = modelMatrix * vec4(position, 1.0);
           vToSun = (viewMatrix * vec4(uSunPos - worldPos.xyz, 0.0)).xyz;
           gl_Position = projectionMatrix * viewMatrix * worldPos;
@@ -1421,14 +1467,22 @@ export function createScene(ctx: SceneContext): SceneInstance {
       `,
       fragmentShader: /* glsl */ `
         uniform vec3 uColor;
+        uniform sampler2D uMap;
+        uniform float uHasMap;
         uniform float uAmbient;
         varying vec3 vNormal;
+        varying vec3 vObj;
         varying vec3 vToSun;
 
         void main() {
+          vec3 on = normalize(vObj);
+          // 等距圆柱投影，和地球那张贴图同一个约定：经度从 -180° 起算
+          vec2 uv = vec2(atan(on.z, on.x) / 6.2831853 + 0.5, on.y * 0.5 + 0.5);
+          vec3 base = uColor * mix(vec3(1.0), texture2D(uMap, uv).rgb, uHasMap);
+
           float lambert = max(0.0, dot(normalize(vNormal), normalize(vToSun)));
           float shade = uAmbient + pow(lambert, 0.85) * (1.0 - uAmbient);
-          gl_FragColor = vec4(uColor * shade, 1.0);
+          gl_FragColor = vec4(base * shade, 1.0);
         }
       `,
     })
@@ -1437,34 +1491,77 @@ export function createScene(ctx: SceneContext): SceneInstance {
   const planets = PLANETS.map((spec) => {
     const segments = spec.radius >= 24 ? 36 : 24
     const geometry = new THREE.SphereGeometry(spec.radius, segments, Math.round(segments * 0.7))
-    const material = createPlanetMaterial(spec)
+    const texture = createPlanetSurfaceTexture(THREE, spec.surface)
+    const material = createPlanetMaterial(spec, texture)
     const mesh = new THREE.Mesh(geometry, material)
+    // 行星本体排除在辉光之外（理由见 SOLAR_NO_BLOOM_LAYER）
+    mesh.layers.set(SOLAR_NO_BLOOM_LAYER)
     solarGroup.add(mesh)
     disposables.push(geometry, material)
+    if (texture) disposables.push(texture)
     return { mesh, spec }
   })
 
-  // 土星环：一圈半透明的扁平环面，跟着行星本体走（挂在 mesh 下）
+  // 土星环：一圈半透明的扁平环面，跟着行星本体走（挂在 mesh 下）。
+  // 用着色器按半径画环纹，而不是一张贴图 —— 环在屏幕上只有百来像素宽，
+  // 贴图会被采样糊掉，程序化的条纹反而更锐（galaxy.ts 里是同一套写法）。
   for (const { mesh, spec } of planets) {
     if (!spec.ring) continue
-    const ringGeometry = new THREE.RingGeometry(spec.radius * 1.35, spec.radius * spec.ring, 64)
-    const ringMaterial = new THREE.MeshBasicMaterial({
-      color: new THREE.Color('#cbb489'),
+    const inner = spec.radius * 1.35
+    const outer = spec.radius * spec.ring
+    const ringGeometry = new THREE.RingGeometry(inner, outer, 128, 1)
+    const ringMaterial = new THREE.ShaderMaterial({
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.42,
       depthWrite: false,
+      uniforms: {
+        uColor: { value: new THREE.Color('#e6d6a8') },
+        uInner: { value: inner },
+        uOuter: { value: outer },
+        uOpacity: { value: 0.62 },
+      },
+      vertexShader: /* glsl */ `
+        uniform float uInner;
+        uniform float uOuter;
+        varying float vRadial;
+
+        void main() {
+          // RingGeometry 躺在 XY 平面，顶点到原点的距离就是半径
+          float r = length(position.xy);
+          vRadial = clamp((r - uInner) / (uOuter - uInner), 0.0, 1.0);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform vec3 uColor;
+        uniform float uOpacity;
+        varying float vRadial;
+
+        void main() {
+          // 细密环纹：土星环本质上是无数条小环
+          float fine = 0.66 + 0.34 * sin(vRadial * 132.0);
+          // 卡西尼缝：偏外侧那条宽暗带。没有它，环就是一整块圆盘
+          float cassini = smoothstep(0.56, 0.64, vRadial) * (1.0 - smoothstep(0.70, 0.78, vRadial));
+          // 内外缘都淡出，否则环的边界会是一条生硬的圆
+          float edge = smoothstep(0.0, 0.14, vRadial) * (1.0 - smoothstep(0.86, 1.0, vRadial));
+
+          float a = uOpacity * fine * edge * (1.0 - cassini * 0.82);
+          gl_FragColor = vec4(uColor * a, a);
+        }
+      `,
     })
     const ring = new THREE.Mesh(ringGeometry, ringMaterial)
     ring.rotation.x = -Math.PI / 2 + 0.32
+    // 环是行星的子对象，但图层不跟着父对象走 —— 不单独设的话它会留在默认层里泛光
+    ring.layers.set(SOLAR_NO_BLOOM_LAYER)
     mesh.add(ring)
     disposables.push(ringGeometry, ringMaterial)
   }
 
   // 这里原来给「太阳系里那颗小地球」挂过一层淡蓝光晕，让它在一片星点里不被淹没。
-  // 小地球已经删掉；现在由地球自己那层 earthHalo 承担同一件事（挂在 earthGroup 下，
-  // 只在「地球还是一颗行星」的那一段亮）—— 大气壳 atmoShell 是真正的大气层，
-  // 但它在 0.43 之前是暗的，盖不住太阳系那一站。
+  // 小地球删掉后，这层光晕一度由地球自己的 earthHalo 承担；按需求，太阳系里除太阳
+  // 外不再保留任何星球表面的光晕，earthHalo 也已一并移除。大气壳 atmoShell 是真正
+  // 的大气层（要到 0.43 之后才淡入），不在此列。
 
   // ============================================================
   // 第 04 / 05 站：大地球
@@ -1503,11 +1600,14 @@ export function createScene(ctx: SceneContext): SceneInstance {
       varying vec3 vViewDir;
 
       void main() {
-        vNormal = normalize(normalMatrix * normal);
+        // 法线 / 视线统一到**世界空间**：uSunDir 是世界系方向，两边必须同系。
+        // 之前法线留在视图空间，相机一转（太阳系站十几度、放大段最大四十度），
+        // 晨昏线就跟着视角偏，看起来就是「光照面跑到背光侧去了」。
+        vec4 worldPos = modelMatrix * vec4(position, 1.0);
+        vNormal = normalize(mat3(modelMatrix) * normal);
         vObj = normalize(position);
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        vViewDir = normalize(-mv.xyz);
-        gl_Position = projectionMatrix * mv;
+        vViewDir = normalize(cameraPosition - worldPos.xyz);
+        gl_Position = projectionMatrix * viewMatrix * worldPos;
       }
     `,
     fragmentShader: /* glsl */ `
@@ -1545,43 +1645,27 @@ export function createScene(ctx: SceneContext): SceneInstance {
           night * vec3(1.0, 0.84, 0.62) * 1.6 + uNightFloor * (vec3(0.05, 0.10, 0.20) + day * 1.5);
         vec3 col = mix(nightCol, dayCol, dayness);
 
-        // 大气亮边。加在光照之后：大气是散射层，背光面的边缘同样会亮
+        // 大气亮边。加在光照之后：大气是散射层，背光面的边缘同样会亮。
+        // 但太阳系那一站要求「没有任何星球表面的光晕」，所以这一圈用
+        // (1 - uNightFloor) 收住 —— 小地球阶段（地照开着，uNightFloor = 1）它
+        // 整个为 0，长满之后（地照归零）才恢复成正常的大气亮边。
         float rim = pow(1.0 - max(0.0, dot(n, normalize(vViewDir))), 3.2);
-        col += vec3(0.36, 0.66, 1.0) * rim * 0.55;
+        col += vec3(0.36, 0.66, 1.0) * rim * 0.55 * (1.0 - uNightFloor);
 
         gl_FragColor = vec4(col, 1.0);
       }
     `,
   })
   const earth = new THREE.Mesh(earthGeometry, earthMaterial)
+  // 地球也是行星，同样排除在辉光之外（理由见 SOLAR_NO_BLOOM_LAYER）。
+  // 它在「大地球」那两站仍不泛光 —— 行星本来就不该发光，那一站的大气亮边
+  // 由 atmoShell 单独承担，不靠辉光。
+  earth.layers.set(SOLAR_NO_BLOOM_LAYER)
   earthGroup.add(earth)
   disposables.push(earthGeometry, earthMaterial)
 
-  /**
-   * 小地球阶段的淡蓝光晕 —— 只负责「太阳系那一站里找得到地球」。
-   *
-   * 那一段里地球半径只有 35~74，离镜头几千单位，屏幕上就是太阳旁边一个
-   * 几像素的暗蓝点，还紧挨着一片亮得多的太阳辉光 —— 没有这层光晕它根本
-   * 读不出来，滚动经过的时候看着就是「地球没了」。大气壳（atmoShell）要到
-   * 0.43 之后才开始淡入（它的亮边会暴露「这颗球马上要长大」），
-   * 盖不住 0.23~0.42 这一段，所以这一层得单独存在。
-   *
-   * 挂在 earthGroup 下、跟着地球一起缩放：光晕和球体的比例恒定，
-   * 小地球阶段看着是「一颗带光晕的蓝色行星」，长满之前整层淡出交给大气壳。
-   */
-  const EARTH_HALO_FACTOR = 6.5
-  const earthHaloMaterial = new THREE.SpriteMaterial({
-    map: glowTexture,
-    color: new THREE.Color('#7fb4ff'),
-    blending: THREE.AdditiveBlending,
-    transparent: true,
-    depthWrite: false,
-    opacity: 0,
-  })
-  const earthHalo = new THREE.Sprite(earthHaloMaterial)
-  earthHalo.scale.setScalar(EARTH_RADIUS * EARTH_HALO_FACTOR)
-  earthGroup.add(earthHalo)
-  disposables.push(earthHaloMaterial)
+  // 按需求，太阳系里不再保留任何星球表面的光晕 —— 地球那层淡蓝光晕（原 earthHalo）
+  // 早已移除，太阳的辉光（sunGlow）也一并删了；这一站的地球直接靠球体本身的昼夜贴图呈现。
 
   // 昼 / 夜贴图异步加载。加载完成前用上面那两张纯色占位 ——
   // 失败也只退化成深蓝球体，开场不会被一张图卡死
@@ -1627,7 +1711,8 @@ export function createScene(ctx: SceneContext): SceneInstance {
 
       void main() {
         vObj = normalize(position);
-        vNormal = normalize(normalMatrix * normal);
+        // 与 uSunDir（世界系）同系，理由见地球表面材质
+        vNormal = normalize(mat3(modelMatrix) * normal);
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
@@ -1676,10 +1761,11 @@ export function createScene(ctx: SceneContext): SceneInstance {
       varying vec3 vViewDir;
 
       void main() {
-        vNormal = normalize(normalMatrix * normal);
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        vViewDir = normalize(-mv.xyz);
-        gl_Position = projectionMatrix * mv;
+        // 世界空间法线 / 视线，与 uSunDir 同系（理由见地球表面材质）
+        vec4 worldPos = modelMatrix * vec4(position, 1.0);
+        vNormal = normalize(mat3(modelMatrix) * normal);
+        vViewDir = normalize(cameraPosition - worldPos.xyz);
+        gl_Position = projectionMatrix * viewMatrix * worldPos;
       }
     `,
     fragmentShader: /* glsl */ `
@@ -1716,10 +1802,15 @@ export function createScene(ctx: SceneContext): SceneInstance {
   const MOON_TILT = 0.09
   const moonOrbitRadius = EARTH_RADIUS * MOON_ORBIT_RATIO
   const moonGeometry = new THREE.SphereGeometry(EARTH_RADIUS * MOON_RADIUS_RATIO, 32, 24)
-  const moonMaterial = createPlanetMaterial({ color: '#c9c5bd' })
+  // 月球也是贴图球：灰白底色 + 月海 + 环形山（见 planet-textures.ts）
+  const moonTexture = createPlanetSurfaceTexture(THREE, 'moon')
+  const moonMaterial = createPlanetMaterial({ color: '#c9c5bd' }, moonTexture)
   const moon = new THREE.Mesh(moonGeometry, moonMaterial)
+  // 月亮同理，不参与辉光
+  moon.layers.set(SOLAR_NO_BLOOM_LAYER)
   earthGroup.add(moon)
   disposables.push(moonGeometry, moonMaterial)
+  if (moonTexture) disposables.push(moonTexture)
 
   // ============================================================
   // 云幕：挂在相机前面的一层，专门用来盖住切口
@@ -1927,7 +2018,12 @@ export function createScene(ctx: SceneContext): SceneInstance {
   return {
     // 阈值 0.3：宇宙里的亮部本来就集中（星点芯、太阳、核球、城市灯），
     // 再低一点整屏就会蒙上一层灰。radius 收在 0.5，亮部周围那圈雾才不至于发虚
-    bloom: { strength: 0.7, radius: 0.5, threshold: 0.3 },
+    //
+    // excludeLayer：太阳系那一站，八颗行星的向阳面同样亮过 0.3 —— 阈值是全屏的，
+    // 拦不住它们，于是每颗都被罩上一层雾。所以把行星（连同环、轨道线、地球、月亮）
+    // 单独放一层，提辉光时整层跳过，只留太阳发光。其它站（星系盘、大地球、地面）
+    // 不在这一层，照常参与，观感不变。
+    bloom: { strength: 0.7, radius: 0.1, threshold: 0.3, excludeLayer: SOLAR_NO_BLOOM_LAYER },
 
     update({ time, renderer, bloom, delta }) {
       const pixelRatio = renderer.getPixelRatio()
@@ -2068,7 +2164,8 @@ export function createScene(ctx: SceneContext): SceneInstance {
       const groundWeight = 1 - solarWeight
 
       // ---- 地球：始终在自己的轨道上；长大的是整条轨道 ----
-      // 地球不脱离轨道（地球半径 700 而轨道只有 430，留在原尺寸轨道上长满会把太阳吞掉），
+      // 地球不脱离轨道（地球半径 700 + 太阳半径 300，而轨道只有 960，比两者之和还小，
+      // 留在原尺寸轨道上长满会把太阳吞掉），
       // 长大的是轨道本身：轨道半径 × m，太阳和另外七颗被推远、甩出画面。
       // 于是地球从头到尾都在轨道点上，从画面上看就是「镜头压进太阳系、
       // 视口落到第三颗行星上、整系继续放大」。
@@ -2112,17 +2209,17 @@ export function createScene(ctx: SceneContext): SceneInstance {
       /**
        * 放大完成后把整系沿「地球 → 太阳」方向再推远一段（0.48→0.56 共 4200）。
        *
-       * m 倍轨道把太阳甩到 3530 之外：镜头贴近地球的那一段里，它的辉光边缘
+       * m 倍轨道把太阳甩到 7870 之外：镜头贴近地球的那一段里，它那颗亮球
        * 仍会探回画面角上，读起来是「太阳系还没走」。
-       * 再推 4200 之后太阳在 7700 开外、离视轴 70° 以上，0.56 前彻底离场，
+       * 再推 4200 之后太阳在 12000 开外、离视轴 70° 以上，0.56 前彻底离场，
        * 「太阳系滑出画面」这句话才算兑现。
        */
       const slideOut = smoothstep01(SOLAR_EXPAND_TO, 0.56, p) * 4200
       if (slideOut > 0.0001) {
         // 方向是「地球 → 太阳」，也就是 -offset：offset 是「太阳 → 地球」那根向量
-        // （见上面 solarGroup.position 的算法），照原样推就成了把太阳**往地球这边**推。
-        // 推距 4200 大于 m 倍之后的日地距离 3530，于是太阳会被推过地球、停在它背后，
-        // 正好是一块糊在地球边上的巨亮盘 —— 这一笔曾经写反过，别只改数字不看符号
+        // （见上面 solarGroup.position 的算法），照原样（+offset）推就成了把太阳
+        // **往地球这边**推、甚至推到地球背后，糊成一块贴在地球边上的巨亮盘 ——
+        // 这一笔曾经写反过，别只改数字不看符号。现在是 -offset，把太阳继续推远。
         solarOutDir.set(-m * offsetX, -m * offsetY, -m * offsetZ).normalize()
         solarGroup.position.addScaledVector(solarOutDir, slideOut)
       }
@@ -2141,12 +2238,7 @@ export function createScene(ctx: SceneContext): SceneInstance {
       sun.scale.setScalar(bodyScale)
       // 日面噪声随时间翻涌，让太阳「活」着（米粒组织、黑子缓慢移动）
       sunMaterial.uniforms.uTime.value = time
-      /**
-       * 辉光锁死在世界尺寸上：它是空气感，不是几何体。
-       * 跟着太阳本体涨的话，放大结束时会有 1400+ 的暖雾糊在镜头前。
-       */
-      const glowSize = SUN_RADIUS * SUN_GLOW_FACTOR
-      sunGlow.scale.set(glowSize, glowSize, 1)
+      // 太阳已无外挂辉光，这里不再需要同步 sunGlow 的尺寸
 
       /**
        * z 方向要交回「正前方」：地球回到视轴上之后，看它和看正前方是同一个方向，
@@ -2235,6 +2327,11 @@ export function createScene(ctx: SceneContext): SceneInstance {
       // 太阳系是整组凭空出现的，没有「生长」这种说法，只能靠星流盖住那一下
       solarGroup.visible = p >= SOLAR_ENTER_AT && p < EARTH_VISIBLE_UNTIL
       if (solarGroup.visible) {
+        // 视线锁上地球之后按 SOLAR_PLANET_CLEAR_* 收干净，把画面让给地球
+        const clear = 1 - smoothstep01(SOLAR_PLANET_CLEAR_FROM, SOLAR_PLANET_CLEAR_TO, p)
+        // 轨道随放大倍率 m 一起长大，行星位置本来就是 ×m，于是始终贴在线圈上
+        for (const loop of orbitLines) loop.scale.setScalar(m)
+        orbitMaterial.opacity = ORBIT_LINE_OPACITY * clear
         for (const planet of planets) {
           // 椭圆轨道：太阳在焦点上，x 方向整体偏移半个焦距。
           // a / b / c 乘上轨道放大倍率 m —— 轨道在长大，行星只是被推远
@@ -2243,8 +2340,6 @@ export function createScene(ctx: SceneContext): SceneInstance {
           planet.mesh.position.set(Math.cos(angle) * a * m - c * m, 0, Math.sin(angle) * b * m)
           // 本体放大（SOLAR_PLANET_EXPAND = 0.7，小于轨道的同比 1）：行星自己涨得慢、
           // 又被 m 倍轨道推远，于是屏幕上越放越小，和「太阳放大（0.8）」形成强对比。
-          // 视线锁上地球之后按 SOLAR_PLANET_CLEAR_* 收干净，把画面让给地球
-          const clear = 1 - smoothstep01(SOLAR_PLANET_CLEAR_FROM, SOLAR_PLANET_CLEAR_TO, p)
           planet.mesh.scale.setScalar(Math.pow(m, SOLAR_PLANET_EXPAND) * clear)
           planet.mesh.visible = clear > 0.002
           planet.mesh.rotation.y = time * SPIN_BASE * planet.spec.spin
@@ -2268,15 +2363,6 @@ export function createScene(ctx: SceneContext): SceneInstance {
         // 地照：整圈公转必然有半圈看到的是夜面，小地球阶段不垫一层就是「凭空消失」；
         // 开始长满（视线已经锁上它）时收掉，把夜面还给城市灯
         earthMaterial.uniforms.uNightFloor.value = 1 - smoothstep01(AIM_LOCK_TO, EARTH_FULL_AT, p)
-
-        // 小地球阶段的光晕：等太阳系站住脚才点亮（见 EARTH_HALO_FROM 的注释），
-        // 地球开始长满时淡出、交给大气亮边（见 earthHalo 的注释）
-        earthHaloMaterial.opacity =
-          0.5 *
-          born *
-          smoothstep01(EARTH_HALO_FROM, EARTH_HALO_FROM + 0.08, p) *
-          (1 - smoothstep01(AIM_LOCK_TO, EARTH_FULL_AT, p))
-        earthHalo.visible = earthHaloMaterial.opacity > 0.004
 
         // 日照方向：每帧按「地球 → 太阳」的实际世界向量算。整组放大之后
         // 太阳一直在被推远，写死一个方向，晨昏线就会和唯一那个光源错开

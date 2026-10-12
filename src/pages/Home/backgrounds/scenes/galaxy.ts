@@ -1,5 +1,6 @@
 import type * as THREE_NS from 'three'
 import type { SceneContext, SceneInstance } from '../three-scene'
+import { createPlanetSurfaceTexture, type PlanetSurface } from '../planet-textures'
 
 /**
  * 星系 —— 一座斜倚在深空里的螺旋星系，盘面缓缓自转，前景悬着一套太阳系。
@@ -103,14 +104,18 @@ interface PlanetSpec {
   phase: number
   /** 相对自转角速度 */
   spin: number
-  /** 表面条纹强度 0~1，0 就是纯色 */
-  banding?: number
-  /** 条纹的对比色 */
-  bandColor?: string
-  /** 条纹频率，越高条纹越密 */
-  bandFreq?: number
   /** 是否带环（土星） */
   ring?: boolean
+  /**
+   * 表面贴图种类，见 planet-textures.ts。
+   *
+   * 原来这里是一组 banding / bandColor / bandFreq，只在木星、土星上叠了两条正弦
+   * 纬度条纹；水星和金星则完全是纯色球 —— 用户的「不真实」说的就是它们。
+   * 现在统一换成烘好的表面贴图，那三个字段一并删掉。
+   *
+   * 不给就是纯色球（地球走自己的材质，不需要它）。
+   */
+  surface?: PlanetSurface
 }
 
 /**
@@ -123,35 +128,13 @@ interface PlanetSpec {
  * 地球排第三位，是唯一有海陆和云的一颗，目的就是让人一眼认出「那是地球」。
  */
 const PLANETS: readonly PlanetSpec[] = [
-  { orbit: 62, radius: 4.4, color: '#b0a69c', speed: 1.0, phase: 0.4, spin: 0.5 },
-  { orbit: 98, radius: 7.2, color: '#f5cf7c', speed: 0.72, phase: 2.1, spin: 0.36 },
+  { orbit: 62, radius: 4.4, color: '#b0a69c', speed: 1.0, phase: 0.4, spin: 0.5, surface: 'mercury' },
+  { orbit: 98, radius: 7.2, color: '#f5cf7c', speed: 0.72, phase: 2.1, spin: 0.36, surface: 'venus' },
+  // 地球（下标 2）走自己那套：真实卫星图 + 云 + 大气亮边，用不上 surface
   { orbit: 140, radius: 15, color: '#2f6fe0', speed: 0.54, phase: 4.0, spin: 1.0 },
-  { orbit: 186, radius: 6.0, color: '#d05a34', speed: 0.42, phase: 1.2, spin: 0.92 },
-  {
-    orbit: 252,
-    radius: 21,
-    color: '#dcb87c',
-    speed: 0.3,
-    phase: 5.3,
-    spin: 1.4,
-    banding: 0.5,
-    bandColor: '#f4e4c4',
-    // 频率按「球面上能看清几个周期」定：木星在屏幕上直径四十来像素，
-    // 给到 13 时每条纹不到 5 像素，采样下来就是一片糊 —— 8 是能看清的上限
-    bandFreq: 8,
-  },
-  {
-    orbit: 312,
-    radius: 17.5,
-    color: '#e2d3a4',
-    speed: 0.22,
-    phase: 3.1,
-    spin: 1.2,
-    banding: 0.38,
-    bandColor: '#f8f0d8',
-    bandFreq: 6,
-    ring: true,
-  },
+  { orbit: 186, radius: 6.0, color: '#d05a34', speed: 0.42, phase: 1.2, spin: 0.92, surface: 'mars' },
+  { orbit: 252, radius: 21, color: '#dcb87c', speed: 0.3, phase: 5.3, spin: 1.4, surface: 'jupiter' },
+  { orbit: 312, radius: 17.5, color: '#e2d3a4', speed: 0.22, phase: 3.1, spin: 1.2, surface: 'saturn', ring: true },
 ]
 
 /** 地球在 PLANETS 里的下标 */
@@ -219,34 +202,36 @@ interface SolarUniforms {
 /**
  * 行星材质。
  *
- * 这一版和之前那版的分界只有一条：**之前用 `MeshBasicMaterial`，是平涂的**。
- * 平涂的球体没有明暗，放大到几十像素就是一块贴纸 —— 加多少细节都救不回来。
+ * 这一版和之前那版的分界只有一条：**之前表面是纯色（木星、土星另叠了两条正弦纬度
+ * 条纹），这一版换成烘好的表面贴图**。几十像素的球上，纯色就是一块贴纸；
+ * 水星、金星当时连条纹都没有，是一模一样的灰球和黄球 —— 用户说的「不真实」就是它。
  * 现在三层叠起来：
  *
- * 1. **朗伯光照**，光源是太阳。太阳方向由 `uSunPos` 每帧传入，
+ * 1. **表面贴图**。球面 UV 按**物体空间**的经纬度算（和地球那份同一套公式），
+ *    所以贴图跟着球自转，而不是跟着相机跑。没有贴图就退回纯色。
+ * 2. **朗伯光照**，光源是太阳。太阳方向由 `uSunPos` 每帧传入，
  *    所以行星公转到不同位置时，被照亮的那一半会跟着转。
- * 2. **纬度条纹**（木星、土星用）。按**物体空间**法线的 y 分量分层 ——
- *    这一点必须用物体空间：用视图空间算的话，球体自转时条纹会满球乱爬。
  * 3. **明暗交界柔化**。指数 0.85 把交界附近稍微提亮，
  *    否则在几十像素的尺寸上，暗面会「吃掉」大半个球。
  */
 function createPlanetMaterial(
   THREE: typeof THREE_NS,
-  spec: Pick<PlanetSpec, 'color' | 'banding' | 'bandColor' | 'bandFreq'>,
+  spec: Pick<PlanetSpec, 'color'>,
   shared: SolarUniforms,
+  map: THREE_NS.Texture | null,
 ): THREE_NS.ShaderMaterial {
   return new THREE.ShaderMaterial({
     uniforms: {
-      uColor: { value: new THREE.Color(spec.color) },
-      uBandColor: { value: new THREE.Color(spec.bandColor ?? spec.color) },
-      uBandAmount: { value: spec.banding ?? 0 },
-      uBandFreq: { value: spec.bandFreq ?? 12 },
+      // 有贴图时底色让位给白色，颜色全部由贴图给；uColor 只当兜底
+      uColor: { value: new THREE.Color(map ? '#ffffff' : spec.color) },
+      uMap: { value: map },
+      uHasMap: { value: map ? 1 : 0 },
       uSunPos: shared.sunPos,
       uAmbient: shared.ambient,
     },
     vertexShader: /* glsl */ `
       varying vec3 vNormal;
-      varying vec3 vObjNormal;
+      varying vec3 vObj;
       varying vec3 vToSun;
 
       uniform vec3 uSunPos;
@@ -254,8 +239,8 @@ function createPlanetMaterial(
       void main() {
         // 光照和菲涅尔都在视图空间算，所以法线要先转过去
         vNormal = normalize(normalMatrix * normal);
-        // 条纹要跟着球走、不能跟着相机走，所以另存一份物体空间法线
-        vObjNormal = normalize(position);
+        // 经纬度要跟着球走、不能跟着相机走，所以另存一份物体空间坐标
+        vObj = normalize(position);
 
         vec4 worldPos = modelMatrix * vec4(position, 1.0);
         // 世界空间里算「指向太阳」的方向，再转到视图空间。
@@ -267,26 +252,21 @@ function createPlanetMaterial(
     `,
     fragmentShader: /* glsl */ `
       uniform vec3 uColor;
-      uniform vec3 uBandColor;
-      uniform float uBandAmount;
-      uniform float uBandFreq;
+      uniform sampler2D uMap;
+      uniform float uHasMap;
       uniform float uAmbient;
 
       varying vec3 vNormal;
-      varying vec3 vObjNormal;
+      varying vec3 vObj;
       varying vec3 vToSun;
 
       void main() {
         vec3 n = normalize(vNormal);
+        vec3 on = normalize(vObj);
 
-        vec3 base = uColor;
-        if (uBandAmount > 0.001) {
-          // 两层频率叠一下。单一频率的条纹看着像斑马线，叠一层错开的才像大气环流
-          float b1 = 0.5 + 0.5 * sin(vObjNormal.y * uBandFreq + 1.7);
-          float b2 = 0.5 + 0.5 * sin(vObjNormal.y * uBandFreq * 2.6 - 0.5);
-          float band = mix(b1, b2, 0.34);
-          base = mix(uColor, uBandColor, band * uBandAmount);
-        }
+        // 等距圆柱投影，和地球那张贴图同一个约定：经度从 -180° 起算
+        vec2 uv = vec2(atan(on.z, on.x) / 6.2831853 + 0.5, on.y * 0.5 + 0.5);
+        vec3 base = uColor * mix(vec3(1.0), texture2D(uMap, uv).rgb, uHasMap);
 
         float lambert = max(0.0, dot(n, normalize(vToSun)));
         float shade = uAmbient + pow(lambert, 0.85) * (1.0 - uAmbient);
@@ -832,13 +812,18 @@ export function createScene(ctx: SceneContext): SceneInstance {
     // 屏幕上直径四十来像素的球，20 段的经线会出现肉眼可见的棱
     const segments = spec.radius >= 12 ? 40 : 28
     const geometry = new THREE.SphereGeometry(spec.radius, segments, Math.round(segments * 0.7))
-    // 地球走带海陆和云的那套，其余是通用行星材质（朗伯光照 + 可选纬度条纹）
+    // 地球走带海陆和云的那套；其余是通用行星材质（表面贴图 + 朗伯光照）。
+    // 地球不烘贴图 —— 它那套是真实卫星图，且它本来就没有 surface
+    const texture = index === EARTH_INDEX || !spec.surface
+      ? null
+      : createPlanetSurfaceTexture(THREE, spec.surface)
     const material =
-      index === EARTH_INDEX ? earthMaterial : createPlanetMaterial(THREE, spec, solarUniforms)
+      index === EARTH_INDEX ? earthMaterial : createPlanetMaterial(THREE, spec, solarUniforms, texture)
 
     const mesh = new THREE.Mesh(geometry, material)
     solarGroup.add(mesh)
     disposables.push(geometry)
+    if (texture) disposables.push(texture)
     // 地球的材质在别处已经登记过了，别重复 dispose
     if (index !== EARTH_INDEX) disposables.push(material)
 
@@ -879,10 +864,12 @@ export function createScene(ctx: SceneContext): SceneInstance {
   // ---- 月球 ----
   const moonGeometry = new THREE.SphereGeometry(MOON_RADIUS, 24, 17)
   // 月球也吃光照 —— 否则它就是个亮度恒定的灰点，看不出是「被太阳照着的球」
-  const moonMaterial = createPlanetMaterial(THREE, { color: '#c6c6cc' }, solarUniforms)
+  const moonTexture = createPlanetSurfaceTexture(THREE, 'moon')
+  const moonMaterial = createPlanetMaterial(THREE, { color: '#c6c6cc' }, solarUniforms, moonTexture)
   const moon = new THREE.Mesh(moonGeometry, moonMaterial)
   solarGroup.add(moon)
   disposables.push(moonGeometry, moonMaterial)
+  if (moonTexture) disposables.push(moonTexture)
 
   // ================= 滚动 =================
 

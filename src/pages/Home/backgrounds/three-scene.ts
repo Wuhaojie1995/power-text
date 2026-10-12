@@ -1,5 +1,6 @@
 import type * as THREE_NS from 'three'
 import type { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
+import type { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import type { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 
 /**
@@ -45,6 +46,23 @@ export interface BloomOptions {
   radius?: number
   /** 亮度阈值 0~1。低于它的像素完全不发光，所以调高 = 只有最亮的芯才发亮 */
   threshold?: number
+  /**
+   * 「不参与辉光」的图层号。
+   *
+   * 不填 = 全场景参与辉光（默认，旧行为）。填了之后，挂在**这个图层**上的物体
+   * 照样正常渲染、正常显示，但**不进入辉光的提取** —— 同一个场景里于是可以做到
+   * 「有的东西发光、有的不发光」。
+   *
+   * 为什么需要它：UnrealBloomPass 的 threshold 是**全屏**的亮度闸门，它分不出
+   * 「这一坨亮的是恒星还是行星」。行星的向阳面本来就亮过阈值，于是每一颗都被
+   * 罩上一层雾 —— 想删都删不掉，因为那不是谁外挂的贴图，是后处理自己算出来的。
+   * 要按「谁该发光」来分，只能在渲染阶段把它们排除出去：单独渲一张不含这些物体的图
+   * 去提亮，再把纯辉光叠回完整的那张（实现见 setupPost）。
+   *
+   * 用法：场景里 `obj.layers.set(该值)`，然后 bloom 声明里带上这个值。
+   * 太阳系那一站就是这么用的 —— 太阳留在默认图层继续发光，八颗行星不发光。
+   */
+  excludeLayer?: number
 }
 
 /** 辉光的运行时参数。字段名与 UnrealBloomPass 对齐，可直接被场景改动 */
@@ -147,6 +165,17 @@ export async function mountThreeBackground(
   let instance: SceneInstance | null = null
   let composer: EffectComposer | null = null
   let bloomPass: UnrealBloomPass | null = null
+  /**
+   * 选择性辉光。声明了 `bloom.excludeLayer` 的场景走这条：两张 composer 分工，
+   * 一张提辉光、一张出片，中间用 mixPass 把纯辉光叠回去。
+   * 没有声明时这里是 null，一切照旧走单链。
+   */
+  let selectiveBloom: {
+    bloomComposer: EffectComposer
+    finalComposer: EffectComposer
+    mixPass: ShaderPass
+    excludeLayer: number
+  } | null = null
   let width = 0
   let height = 0
   let elapsed = 0
@@ -165,27 +194,24 @@ export async function mountThreeBackground(
    * 最后这步最容易漏：离屏渲染不会自动做色彩空间转换，少了 OutputPass 整屏会明显发暗发灰。
    */
   const setupPost = async (bloomOptions: BloomOptions) => {
-    const [{ EffectComposer }, { RenderPass }, { UnrealBloomPass }, { OutputPass }] = await Promise.all([
-      import('three/examples/jsm/postprocessing/EffectComposer.js'),
-      import('three/examples/jsm/postprocessing/RenderPass.js'),
-      import('three/examples/jsm/postprocessing/UnrealBloomPass.js'),
-      import('three/examples/jsm/postprocessing/OutputPass.js'),
-    ])
+    const [{ EffectComposer }, { RenderPass }, { UnrealBloomPass }, { OutputPass }, { ShaderPass }] =
+      await Promise.all([
+        import('three/examples/jsm/postprocessing/EffectComposer.js'),
+        import('three/examples/jsm/postprocessing/RenderPass.js'),
+        import('three/examples/jsm/postprocessing/UnrealBloomPass.js'),
+        import('three/examples/jsm/postprocessing/OutputPass.js'),
+        import('three/examples/jsm/postprocessing/ShaderPass.js'),
+      ])
 
-    // 自带 samples 的 render target：composer 内部会 clone 一份做 ping-pong，
-    // RenderTarget.copy 里会把 samples 一起复制过去，所以两边都带上 MSAA。
-    // 尺寸取 drawing buffer（已含 DPR），和 composer 默认那条路径保持一致
+    // 每张 composer 都要自己的一份离屏 target（composer 内部会 clone 一份做 ping-pong），
+    // 所以这里是个「模板工厂」而不是共用一张。尺寸取 drawing buffer（已含 DPR）
     const bufferSize = renderer.getDrawingBufferSize(new THREE.Vector2())
-    const msaaTarget = new THREE.WebGLRenderTarget(bufferSize.width, bufferSize.height, {
-      // 默认就是 HalfFloatType，保持不动 —— bloom 需要 HDR 的余量
-      type: THREE.HalfFloatType,
-      samples: MSAA_SAMPLES,
-    })
-
-    const nextComposer = new EffectComposer(renderer, msaaTarget)
-    nextComposer.setPixelRatio(renderer.getPixelRatio())
-    nextComposer.setSize(width, height)
-    nextComposer.addPass(new RenderPass(scene, camera))
+    const createTarget = () =>
+      new THREE.WebGLRenderTarget(bufferSize.width, bufferSize.height, {
+        // 默认就是 HalfFloatType，保持不动 —— bloom 需要 HDR 的余量
+        type: THREE.HalfFloatType,
+        samples: MSAA_SAMPLES,
+      })
 
     // UnrealBloomPass 内部自己按传入分辨率的一半起算，逐级降到 1/32，所以这里给全尺寸即可
     const pass = new UnrealBloomPass(
@@ -194,14 +220,84 @@ export async function mountThreeBackground(
       bloomOptions.radius ?? 0.6,
       bloomOptions.threshold ?? 0.22,
     )
-    nextComposer.addPass(pass)
-    nextComposer.addPass(new OutputPass())
-
-    composer = nextComposer
     bloomPass = pass
     // UnrealBloomPass 的这三个字段正好就是 BloomController 的形状，直接交出去，
     // 场景只看得见这三个数字，不用知道 pass 在哪
     ctx.bloom = pass
+
+    const excludeLayer = bloomOptions.excludeLayer
+
+    if (excludeLayer === undefined) {
+      // 全场景辉光：一条链走完，和以前完全一样
+      const nextComposer = new EffectComposer(renderer, createTarget())
+      nextComposer.setPixelRatio(renderer.getPixelRatio())
+      nextComposer.setSize(width, height)
+      nextComposer.addPass(new RenderPass(scene, camera))
+      nextComposer.addPass(pass)
+      nextComposer.addPass(new OutputPass())
+      composer = nextComposer
+      return
+    }
+
+    /**
+     * 选择性辉光：只有一部分物体该发光。
+     *
+     * 两张 composer 分工：
+     *   - bloomComposer 负责「提辉光」。渲染时把 excludeLayer 从相机里关掉，
+     *     那一层的物体压根不进这张图 —— 提亮、模糊自然也就扫不到它们。
+     *   - finalComposer 负责出片：完整场景 + 上面那张里的**纯辉光**。
+     *
+     * 为什么不能直接把 bloomComposer 的输出拿来叠：UnrealBloomPass 是把自己算出的
+     * 辉光**加在输入图之上**再交出去的，照搬会把发光物（太阳）算两遍，白到没边。
+     * 要的是它内部那张只含辉光的 composite 结果 —— `renderTargetsHorizontal[0]`，
+     * 那一张不含原图（原图是在最后一步用加法混合叠上去的）。这一条依赖 pass 的
+     * 内部字段，three 升级时留意。
+     */
+    // 主渲染必须看得见这一层，否则那些物体直接消失（相机默认只认 layer 0）
+    camera.layers.enable(excludeLayer)
+
+    const bloomComposer = new EffectComposer(renderer, createTarget())
+    bloomComposer.renderToScreen = false
+    bloomComposer.setPixelRatio(renderer.getPixelRatio())
+    bloomComposer.setSize(width, height)
+    bloomComposer.addPass(new RenderPass(scene, camera))
+    bloomComposer.addPass(pass)
+
+    const finalComposer = new EffectComposer(renderer, createTarget())
+    finalComposer.setPixelRatio(renderer.getPixelRatio())
+    finalComposer.setSize(width, height)
+    finalComposer.addPass(new RenderPass(scene, camera))
+
+    const mixPass = new ShaderPass(
+      new THREE.ShaderMaterial({
+        uniforms: {
+          baseTexture: { value: null },
+          bloomTexture: { value: pass.renderTargetsHorizontal[0].texture },
+        },
+        vertexShader: /* glsl */ `
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: /* glsl */ `
+          uniform sampler2D baseTexture;
+          uniform sampler2D bloomTexture;
+          varying vec2 vUv;
+
+          void main() {
+            // 完整场景 + 纯辉光。加法混合是 bloom 的语义，不能换成别的
+            gl_FragColor = texture2D(baseTexture, vUv) + texture2D(bloomTexture, vUv);
+          }
+        `,
+      }),
+      'baseTexture',
+    )
+    finalComposer.addPass(mixPass)
+    finalComposer.addPass(new OutputPass())
+
+    selectiveBloom = { bloomComposer, finalComposer, mixPass, excludeLayer }
   }
 
   const applySize = () => {
@@ -215,8 +311,16 @@ export async function mountThreeBackground(
     // 第三个参数 false：不要用行内样式覆盖 canvas 尺寸，尺寸归 CSS 管
     renderer.setSize(width, height, false)
     // 后处理的 render target 不归 renderer 管，得自己同步，否则窗口一拉伸画面就糊
-    composer?.setPixelRatio(renderer.getPixelRatio())
-    composer?.setSize(width, height)
+    const dpr = renderer.getPixelRatio()
+    if (selectiveBloom) {
+      selectiveBloom.bloomComposer.setPixelRatio(dpr)
+      selectiveBloom.bloomComposer.setSize(width, height)
+      selectiveBloom.finalComposer.setPixelRatio(dpr)
+      selectiveBloom.finalComposer.setSize(width, height)
+    } else {
+      composer?.setPixelRatio(dpr)
+      composer?.setSize(width, height)
+    }
     camera.aspect = width / height
     camera.updateProjectionMatrix()
 
@@ -243,8 +347,23 @@ export async function mountThreeBackground(
     ctx.time = elapsed
     ctx.delta = delta
     instance?.update(ctx)
-    if (composer) composer.render()
-    else renderer.render(scene, camera)
+    if (selectiveBloom) {
+      // 先渲「该发光的那部分」去提辉光，再渲完整场景把纯辉光叠回去。
+      // 关键是临时把 excludeLayer 从相机里关掉：行星于是不进入提亮这一步，
+      // 但它们在 finalComposer 里照常渲染 —— 只是不再被罩上一层雾。
+      camera.layers.disable(selectiveBloom.excludeLayer)
+      selectiveBloom.bloomComposer.render()
+      camera.layers.enable(selectiveBloom.excludeLayer)
+      // 每帧取一次纹理引用，不存死：尺寸变化时 render target 会被 resize，
+      // 存下来的引用不一定还指向当前那张
+      selectiveBloom.mixPass.uniforms.bloomTexture.value =
+        bloomPass?.renderTargetsHorizontal[0].texture ?? null
+      selectiveBloom.finalComposer.render()
+    } else if (composer) {
+      composer.render()
+    } else {
+      renderer.render(scene, camera)
+    }
   }
 
   const start = () => {
@@ -330,6 +449,9 @@ export async function mountThreeBackground(
       bloomPass = null
       composer?.dispose()
       composer = null
+      selectiveBloom?.bloomComposer.dispose()
+      selectiveBloom?.finalComposer.dispose()
+      selectiveBloom = null
 
       renderer.dispose()
       // 主动丢上下文，让浏览器尽快回收显存。
